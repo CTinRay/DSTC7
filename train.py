@@ -36,6 +36,7 @@ def main(args):
         train.n_positive = 1
         train.n_negative = 4
         train.padding = embeddings.to_index('</s>')
+        train.option_padded_len = 50
 
     predictor = DualRNNPredictor(metrics=[Accuracy()],
                                  **config['model_parameters'])

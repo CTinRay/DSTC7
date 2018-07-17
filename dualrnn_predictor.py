@@ -43,7 +43,8 @@ class DualRNNPredictor(BasePredictor):
         # predicts = logits.max(-1)[1]
         probs = torch.nn.functional.softmax(logits, -1)
         loss = (-torch.log(probs + EPSILON) *
-                batch['labels'].float().to(self.device)).mean()
+                batch['labels'].float().to(self.device)).sum() \
+                / self.batch_size
         return probs, loss
 
     def _predict_batch(self, batch, max_len=30):
