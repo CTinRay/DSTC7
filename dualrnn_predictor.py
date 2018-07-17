@@ -1,7 +1,9 @@
-import math
 import torch
 from base_predictor import BasePredictor
 from modules import DualRNN
+
+
+EPSILON = 1e-6
 
 
 class DualRNNPredictor(BasePredictor):
@@ -40,8 +42,8 @@ class DualRNNPredictor(BasePredictor):
             batch['option_lens'])
         predicts = logits.max(-1)[1]
         probs = torch.nn.functional.softmax(logits, -1)
-        loss = (-torch.log(probs) *
-                batch['labels'].float().to(self.device)).sum()
+        loss = (-torch.log(probs + EPSILON) *
+                batch['labels'].float().to(self.device)).mean()
         return predicts, loss
 
     def _predict_batch(self, batch, max_len=30):
