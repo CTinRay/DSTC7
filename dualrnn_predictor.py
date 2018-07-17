@@ -40,11 +40,11 @@ class DualRNNPredictor(BasePredictor):
             batch['context_lens'],
             options.to(self.device),
             batch['option_lens'])
-        predicts = logits.max(-1)[1]
+        # predicts = logits.max(-1)[1]
         probs = torch.nn.functional.softmax(logits, -1)
         loss = (-torch.log(probs + EPSILON) *
                 batch['labels'].float().to(self.device)).mean()
-        return predicts, loss
+        return probs, loss
 
     def _predict_batch(self, batch, max_len=30):
         logits = self.model.forward(

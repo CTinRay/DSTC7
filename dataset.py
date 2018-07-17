@@ -1,3 +1,4 @@
+import pdb
 import random
 import torch
 from torch.utils.data import Dataset
@@ -18,7 +19,27 @@ class DSTC7Dataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, index):
-        return self.data[index]
+        data = dict(self.data[index])
+
+        # sample positive indices
+        positive_indices = list(range(data['n_corrects']))
+        random.shuffle(positive_indices)
+        positive_indices = positive_indices[:self.n_positive]
+
+        # sample negative indices
+        negative_indices = list(range(data['n_corrects'],
+                                      len(data['options'])))
+        random.shuffle(negative_indices)
+        negative_indices = negative_indices[:self.n_negative]
+        
+        data['options'] = (
+            [data['options'][i] for i in positive_indices]
+            + [data['options'][i] for i in negative_indices]
+        )
+
+        data['labels'] = [1] * self.n_positive + [0] * self.n_negative
+
+        return data
 
     def collate_fn(self, datas):
         batch = {}
@@ -27,6 +48,7 @@ class DSTC7Dataset(Dataset):
         batch['id'] = [data['id'] for data in datas]
         batch['speaker'] = [data['speaker'] for data in datas]
         batch['utterance_ends'] = [data['utterance_ends'] for data in datas]
+        batch['labels'] = torch.tensor([data['labels'] for data in datas])
 
         # build tensor of context
         batch['context_lens'] = [len(data['context']) for data in datas]
@@ -36,31 +58,13 @@ class DSTC7Dataset(Dataset):
              for data in datas]
         )
 
-        # sample positive and negative options
-        batch['options'] = []
-        batch['labels'] = []
-        for data in datas:
-            positive_indices = list(range(data['n_corrects']))
-            random.shuffle(positive_indices)
-            positive_indices = positive_indices[:self.n_positive]
-            negative_indices = list(range(data['n_corrects'],
-                                          len(data['options'])))
-            random.shuffle(negative_indices)
-            negative_indices = negative_indices[:self.n_negative]
-            batch['options'].append(
-                [data['options'][i] for i in positive_indices]
-                + [data['options'][i] for i in negative_indices]
-            )
-            batch['labels'].append([1] * self.n_positive + [0] * self.n_negative)
-        batch['labels'] = torch.tensor(batch['labels'])
-
         # build tensor of options
         batch['option_lens'] = [[len(opt) for opt in data['options']]
                                 for data in datas]
         batch['options'] = torch.tensor(
             [[pad_to_len(opt, self.option_padded_len, self.padding)
-              for opt in options]
-             for options in batch['options']]
+              for opt in data['options']]
+             for data in datas]
         )
 
         return batch

@@ -1,5 +1,4 @@
 import argparse
-import copy
 import logging
 import os
 import pdb
@@ -8,6 +7,7 @@ import sys
 import traceback
 import json
 from callbacks import ModelCheckpoint, MetricsLogger
+from metrics import Accuracy
 from dualrnn_predictor import DualRNNPredictor
 
 
@@ -37,7 +37,8 @@ def main(args):
         train.n_negative = 4
         train.padding = embeddings.to_index('</s>')
 
-    predictor = DualRNNPredictor(**config['model_parameters'])
+    predictor = DualRNNPredictor(metrics=[Accuracy()],
+                                 **config['model_parameters'])
 
     model_checkpoint = ModelCheckpoint(
         os.path.join(args.model_dir, 'model.pkl'),
