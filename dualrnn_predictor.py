@@ -12,13 +12,15 @@ class DualRNNPredictor(BasePredictor):
         dim_hidden (int): Number of dimensions of intermediate
             information embeddings.
     """
+
     def __init__(self, embeddings, dim_hidden,
                  dropout_rate=0.2, **kwargs):
         super(DualRNNPredictor, self).__init__(**kwargs)
         self.dim_hidden = dim_hidden
         self.model = DualRNN(embeddings.size(1), dim_hidden)
         self.embeddings = torch.nn.Embedding(embeddings.size(0),
-                                             embeddings.size(1))        
+                                             embeddings.size(1))
+        self.embeddings.weight = torch.nn.Parameter(embeddings)
 
         # use cuda
         self.model = self.model.to(self.device)
@@ -38,7 +40,8 @@ class DualRNNPredictor(BasePredictor):
             batch['option_lens'])
         predicts = logits.max(-1)[1]
         probs = torch.nn.functional.softmax(logits, -1)
-        loss = (-torch.log(probs) * batch['labels'].float().to(self.device)).sum()
+        loss = (-torch.log(probs) *
+                batch['labels'].float().to(self.device)).sum()
         return predicts, loss
 
     def _predict_batch(self, batch, max_len=30):
