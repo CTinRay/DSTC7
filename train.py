@@ -16,17 +16,21 @@ def main(args):
     with open(config_path) as f:
         config = json.load(f)
 
+    logging.info('loading embedding...')
     with open(config['model_parameters']['embeddings'], 'rb') as f:
         embeddings = pickle.load(f)
         embeddings.add('speaker1')
         embeddings.add('speaker2')
         config['model_parameters']['embeddings'] = embeddings.embeddings
 
+    logging.info('loading dev data...')
     with open(config['model_parameters']['valid'], 'rb') as f:
         config['model_parameters']['valid'] = pickle.load(f)
-        config['model_parameters']['valid'].padding = embeddings.to_index('</s>')
+        config['model_parameters']['valid'].padding = \
+            embeddings.to_index('</s>')
         config['model_parameters']['valid'].n_negative = 100
 
+    logging.info('loading train data...')
     with open(config['train'], 'rb') as f:
         train = pickle.load(f)
         train.n_positive = 1
@@ -43,6 +47,7 @@ def main(args):
         os.path.join(args.model_dir, 'model.pkl')
     )
 
+    logging.info('start training!')
     predictor.fit_dataset(train,
                           train.collate_fn,
                           [model_checkpoint, metrics_logger])
