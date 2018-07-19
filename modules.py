@@ -19,18 +19,20 @@ class DualRNN(torch.nn.Module):
             torch.nn.ReLU(),
             torch.nn.Linear(256, 1)
         )
+        self.transform = torch.nn.Linear(2 * dim_hidden, 2 * dim_hidden)
 
     def forward(self, context, context_lens, options, option_lens):
         context_hidden = self.context_encoder(context, context_lens)
+        predict_option = self.transform(context_hidden)
         logits = []
         for i, option in enumerate(options.transpose(1, 0)):
             # option_hidden.size() == (batch, dim_hidden)
             option_hidden = self.option_encoder(option,
                                                 [ol[i] for ol in option_lens])
-            # logit.size() == (batch, 1)
-            logit = self.mlp(torch.cat([context_hidden, option_hidden], -1))
+            # logit.size() == (batch,)
+            logit = (predict_option * option_hidden).sum(-1)
             logits.append(logit)
-        logits = torch.cat(logits, 1)
+        logits = torch.stack(logits, 1)
         return logits
 
 
