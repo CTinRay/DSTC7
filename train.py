@@ -28,13 +28,14 @@ def main(args):
         config['model_parameters']['valid'] = pickle.load(f)
         config['model_parameters']['valid'].padding = \
             embeddings.to_index('</s>')
-        config['model_parameters']['valid'].n_negative = 100
+        config['model_parameters']['valid'].n_positive = config['valid_n_positive']
+        config['model_parameters']['valid'].n_negative = config['valid_n_negative']
 
     logging.info('loading train data...')
     with open(config['train'], 'rb') as f:
         train = pickle.load(f)
-        train.n_positive = 1
-        train.n_negative = 4
+        train.n_positive = config['train_n_positive']
+        train.n_negative = config['train_n_negative']
         train.padding = embeddings.to_index('</s>')
         train.option_padded_len = 50
 

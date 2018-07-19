@@ -1,0 +1,14 @@
+{
+    "model_parameters" : {
+        "embeddings": "../data/task1/ubuntu_embeddings.pkl",
+        "dim_hidden": 128,
+        "valid": "../data/task1/ubuntu_valid.pkl",
+        "batch_size": 32,
+        "max_epochs": 30
+    },
+    "train": "../data/task1/ubuntu_train.pkl",
+    "train_n_positive": 1,
+    "train_n_negative": 9,
+    "valid_n_positive": 1,
+    "valid_n_negative": 100
+}
