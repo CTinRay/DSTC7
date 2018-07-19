@@ -22,6 +22,7 @@ class Accuracy(Metrics):
         self.n = 0
         self.n_correct_ats = [0] * len(self.ats)
         self.name = 'Accuracy@' + ', '.join(map(str, ats))
+        self.noise = 1e-6
 
     def reset(self):
         self.n = 0
@@ -33,8 +34,9 @@ class Accuracy(Metrics):
             predicts (FloatTensor): with size (batch, n_samples).
             batch (dict): batch.
         """
+        # add noise to deal with cases where all predict score are identical
+        predicts += torch.rand_like(predicts) * self.noise
         self.n += predicts.size(0)
-
         sorted_predicts = torch.sort(predicts)[0]
         for i, at in enumerate(self.ats):
             if predicts.size(1) <= at:
