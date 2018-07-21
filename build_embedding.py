@@ -7,29 +7,29 @@ import spacy
 import copy
 import sys
 import pdb
+# from IPython import embed
 import traceback
+import numpy as np
 from multiprocessing import Pool
 from tqdm import tqdm
 from embeddings import Embeddings
 
 
-def collect_words(data_path, n_workers=16):
+def collect_words(train_path, valid_path, n_workers=16):
     logging.info('Loading valid data...')
-    valid_path = os.path.join(data_path, 'ubuntu_dev_subtask1.json')
     with open(valid_path) as f:
         valid = json.load(f)
     logging.info('Tokenize words in valid...')
     valid = tokenize_data_parallel(valid, args.n_workers)
 
     logging.info('Loading train data...')
-    train_path = os.path.join(data_path, 'ubuntu_train_subtask1.json')
     with open(train_path) as f:
         train = json.load(f)
     logging.info('Tokenize words in train...')
     train = tokenize_data_parallel(train, args.n_workers)
 
     logging.info('Building word list...')
-    words = set()
+    words = {}
     data = train + valid
     for sample in tqdm(data):
         utterances = (
@@ -43,7 +43,10 @@ def collect_words(data_path, n_workers=16):
 
         for utterance in utterances:
             for word in utterance:
-                words.add(word)
+                if word not in words:
+                    words[word] = 0
+                else:
+                    words[word] += 1
 
     return words
 
@@ -94,29 +97,60 @@ def tokenize_data(data):
     return data
 
 
+def oov_statistics(words, word_dict):
+    total_word = 0
+    oov = {}
+    for word, count in words.items():
+        total_word += count
+        if word not in word_dict:
+            oov[word] = count
+
+    oov_counts = np.array([v for v in oov.values()])
+    oov_counts = np.sort(oov_counts)
+    counts_cum_sum = (
+        np.cumsum(oov_counts[::-1]) + len(word_dict)) / total_word
+    return oov, counts_cum_sum
+
+
 def main(args):
-    word_list = collect_words(args.data_path)
-    embeddings = Embeddings(args.embedding_path, word_list)
-    logging.info('len of embedding.word_dict = {}, len of word_list = {}'
-                 .format(len(embeddings.word_dict), len(word_list)))
+    logging.info('Collecting words...')
+    words = collect_words(args.train_path, args.valid_path)
+
+    logging.info('Building embeddings...')
+    embeddings = Embeddings(args.embedding_path, list(words.keys()))
+
+    logging.info('Saving embedding to {}'.format(args.output))
     with open(args.output, 'wb') as f:
         pickle.dump(embeddings, f)
+
+    if args.words is not None:
+        with open(args.words, 'wb') as f:
+            pickle.dump(words, f)
+
+    logging.info('Calculating OOV statics...')
+    oov, cum_sum = oov_statistics(words, embeddings.word_dict)
+    logging.info('There are {} OOVS'.format(cum_sum[-1]))
+
+    # embed()
 
 
 def _parse_args():
     parser = argparse.ArgumentParser(
-        description="Preprocess and generate preprocessed pickle.")
-    parser.add_argument('data_path', type=str,
-                        help='Path to the data.')
+        description='Build embedding pickle by extracting vector from'
+                    ' pretrained embeddings only for words in the data.')
+    parser.add_argument('train_path', type=str,
+                        help='[input] Path to the train data.')
+    parser.add_argument('valid_path', type=str,
+                        help='[input] Path to the dev data.')
     parser.add_argument('embedding_path', type=str,
-                        help='Path to the embedding.')
+                        help='[input] Path to the embedding .vec file (such as'
+                             'FastText or Glove).')
     parser.add_argument('output', type=str,
-                        help='Path to the output pickle file.')
-    parser.add_argument('--valid_ratio', type=float, default=0.2,
-                        help='Ratio of data used as validation set.')
-    parser.add_argument('--index', type=str, default=None,
-                        help='JSON file that stores shuffled index.')
+                        help='[output] Path to the output pickle file.')
     parser.add_argument('--n_workers', type=int, default=16)
+    parser.add_argument('--words', type=str, default=None,
+                        help='If a path is specified, list of words in the'
+                             'data will be dumped.')
     args = parser.parse_args()
     return args
 

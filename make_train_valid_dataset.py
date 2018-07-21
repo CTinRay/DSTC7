@@ -11,34 +11,34 @@ from preprocessor import Preprocessor
 
 def main(args):
 
-    embeddings_path = os.path.join(args.data_dir,
-                                   'ubuntu_embeddings.pkl')
-    with open(embeddings_path, 'rb') as f:
+    with open(args.embeddings_path, 'rb') as f:
         embeddings = pickle.load(f)
     preprocessor = Preprocessor(embeddings)
 
-    train = preprocessor.get_dataset(
-        os.path.join(args.data_dir, 'ubuntu_train_subtask1.json')
-    )
-    train_path = os.path.join(args.output_dir, 'ubuntu_train.pkl')
-    with open(train_path, 'wb') as f:
+    train = preprocessor.get_dataset(args.train_path, args.n_workers)
+    with open(args.output_train_path, 'wb') as f:
         pickle.dump(train, f)
 
-    valid = preprocessor.get_dataset(
-        os.path.join(args.data_dir, 'ubuntu_dev_subtask1.json')
-    )
-    valid_path = os.path.join(args.output_dir, 'ubuntu_valid.pkl')
-    with open(valid_path, 'wb') as f:
+    valid = preprocessor.get_dataset(args.valid_path, args.n_workers)
+    with open(args.output_valid_path, 'wb') as f:
         pickle.dump(valid, f)
 
 
 def _parse_args():
     parser = argparse.ArgumentParser(
         description="Preprocess and generate preprocessed pickle.")
-    parser.add_argument('data_dir', type=str,
-                        help='Path to the data.')
-    parser.add_argument('output_dir', type=str,
-                        help='Path to the output pickle file.')
+    parser.add_argument('embeddings_path', type=str,
+                        help='[input] Path to the embedding pickle built with'
+                             ' build_embeddings.py.')
+    parser.add_argument('train_path', type=str,
+                        help='[input] Path to the training json data.')
+    parser.add_argument('valid_path', type=str,
+                        help='[input] Path to the dev json data.')
+    parser.add_argument('output_train_path', type=str,
+                        help='[output] Path to the training pickle file.')
+    parser.add_argument('output_valid_path', type=str,
+                        help='[output] Path to the valid pickle file.')
+    parser.add_argument('--n_workers', type=int)
     args = parser.parse_args()
     return args
 
