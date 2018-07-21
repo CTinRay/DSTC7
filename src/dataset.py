@@ -54,7 +54,7 @@ class DSTC7Dataset(Dataset):
         batch['context_lens'] = [len(data['context']) for data in datas]
         padded_len = min(self.context_padded_len, max(batch['context_lens']))
         batch['context'] = torch.tensor(
-            [pad_to_len(data['context'], self.context_padded_len, padded_len)
+            [pad_to_len(data['context'], padded_len, self.padding)
              for data in datas]
         )
 
