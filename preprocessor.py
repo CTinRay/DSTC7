@@ -96,8 +96,10 @@ class Preprocessor:
             processed['context'].append(
                 self.sentence_to_indices(message['utterance'])
             )
+            speaker = message['speaker'].replace('student', 'participant_1') \
+                                        .replace('advisor', 'participant_2')
             processed['speaker'].append(
-                ['participant_1', 'participant_2'].index(message['speaker'])
+                ['participant_1', 'participant_2'].index(speaker)
             )
 
         # process options
