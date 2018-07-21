@@ -23,9 +23,11 @@ python3 train.py ../models/dual-rnn
 
 ## Current Result
 
-At epoch 11, performance on validation set:
+### Bi-Directional DualRNN
 
-| Dataset | Accuracy@1 | Accuracy@5 | Accuracy@10 | Accuracy@50 |
+- hidden state dimension: 128
+
+| Dataset | Accuracy@1 | Accuracy@5 | Accuracy@10 | Accuracy@50 | epoch |
 | --- | --- | --- | --- | --- |
-| Ubuntu | 0.1130226 | 0.4626962 | 0.6051210 | 0.941588 |
-
+| Ubuntu   | 0.1130226 | 0.4626962 | 0.6051210 | 0.941588 | 10 |
+| Advising | 0.0200400 | 0.1302605 | 0.2565130 | 0.739478 | 11 |
