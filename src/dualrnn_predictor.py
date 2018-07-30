@@ -1,9 +1,6 @@
 import torch
 from base_predictor import BasePredictor
-from modules import DualRNN
-
-
-EPSILON = 1e-6
+from modules import DualRNN, NLLLoss, RankLoss
 
 
 class DualRNNPredictor(BasePredictor):
@@ -16,7 +13,7 @@ class DualRNNPredictor(BasePredictor):
     """
 
     def __init__(self, embeddings, dim_hidden,
-                 dropout_rate=0.2, **kwargs):
+                 dropout_rate=0.2, loss='NLLLoss', margin=0, **kwargs):
         super(DualRNNPredictor, self).__init__(**kwargs)
         self.dim_hidden = dim_hidden
         self.model = DualRNN(embeddings.size(1), dim_hidden)
@@ -32,6 +29,11 @@ class DualRNNPredictor(BasePredictor):
         self.optimizer = torch.optim.Adam(self.model.parameters(),
                                           lr=self.learning_rate)
 
+        self.loss = {
+            'NLLLoss': NLLLoss(),
+            'RankLoss': RankLoss(margin)
+        }[loss]
+
     def _run_iter(self, batch, training):
         context = self.embeddings(batch['context'].to(self.device))
         options = self.embeddings(batch['options'].to(self.device))
@@ -40,12 +42,8 @@ class DualRNNPredictor(BasePredictor):
             batch['context_lens'],
             options.to(self.device),
             batch['option_lens'])
-        # predicts = logits.max(-1)[1]
-        probs = torch.nn.functional.softmax(logits, -1)
-        loss = (-torch.log(probs + EPSILON) *
-                batch['labels'].float().to(self.device)).sum() \
-                / self.batch_size
-        return probs, loss
+        loss = self.loss(logits, batch['labels'].to(self.device))
+        return logits, loss
 
     def _predict_batch(self, batch, max_len=30):
         logits = self.model.forward(
