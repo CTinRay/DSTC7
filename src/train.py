@@ -30,14 +30,17 @@ def main(args):
             embeddings.to_index('</s>')
         config['model_parameters']['valid'].n_positive = config['valid_n_positive']
         config['model_parameters']['valid'].n_negative = config['valid_n_negative']
+        config['model_parameters']['valid'].context_padded_len = 800
+        config['model_parameters']['valid'].option_padded_len = 150
 
     logging.info('loading train data...')
     with open(config['train'], 'rb') as f:
         train = pickle.load(f)
         train.n_positive = config['train_n_positive']
         train.n_negative = config['train_n_negative']
+        train.context_padded_len = 400
         train.padding = embeddings.to_index('</s>')
-        train.option_padded_len = 50
+        train.option_padded_len = 150
 
     predictor = DualRNNPredictor(metrics=[Accuracy()],
                                  **config['model_parameters'])
