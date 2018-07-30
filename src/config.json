@@ -10,5 +10,7 @@
     "train_n_positive": 1,
     "train_n_negative": 9,
     "valid_n_positive": 1,
-    "valid_n_negative": 100
+    "valid_n_negative": 100,
+    "context_padded_len": 400,
+    "option_padded_len": 100
 }

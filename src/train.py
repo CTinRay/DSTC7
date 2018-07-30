@@ -30,17 +30,17 @@ def main(args):
             embeddings.to_index('</s>')
         config['model_parameters']['valid'].n_positive = config['valid_n_positive']
         config['model_parameters']['valid'].n_negative = config['valid_n_negative']
-        config['model_parameters']['valid'].context_padded_len = 800
-        config['model_parameters']['valid'].option_padded_len = 150
+        config['model_parameters']['valid'].context_padded_len = config['context_padded_len']
+        config['model_parameters']['valid'].option_padded_len = config['option_padded_len']
 
     logging.info('loading train data...')
     with open(config['train'], 'rb') as f:
         train = pickle.load(f)
         train.n_positive = config['train_n_positive']
         train.n_negative = config['train_n_negative']
-        train.context_padded_len = 400
+        train.context_padded_len = config['context_padded_len']
         train.padding = embeddings.to_index('</s>')
-        train.option_padded_len = 150
+        train.option_padded_len = config['option_padded_len']
 
     predictor = DualRNNPredictor(metrics=[Accuracy()],
                                  **config['model_parameters'])
@@ -50,7 +50,7 @@ def main(args):
         'loss', 1, 'all'
     )
     metrics_logger = MetricsLogger(
-        os.path.join(args.model_dir, 'model.pkl')
+        os.path.join(args.model_dir, 'log.json')
     )
 
     logging.info('start training!')
