@@ -49,7 +49,7 @@ class Preprocessor:
             for i in range(n_workers):
                 batch_start = (len(dataset) // n_workers) * i
                 if i == n_workers - 1:
-                    batch_end = len(dataset) - 1
+                    batch_end = len(dataset)
                 else:
                     batch_end = (len(dataset) // n_workers) * (i + 1)
 
