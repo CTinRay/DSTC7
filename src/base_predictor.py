@@ -69,7 +69,7 @@ class BasePredictor():
         if batch_size is None:
             batch_size = self.batch_size
         if predict_fn is None:
-            predict_fn = self.predict_batch
+            predict_fn = self._predict_batch
 
         # set model to eval mode
         self.model.eval()
@@ -84,7 +84,8 @@ class BasePredictor():
 
         ys_ = []
         for batch in dataloader:
-            batch_y_ = predict_fn(batch)
+            with torch.no_grad():
+                batch_y_ = predict_fn(batch).data
             ys_.append(batch_y_)
 
         ys_ = torch.cat(ys_, 0)
