@@ -119,6 +119,9 @@ def main(args):
     logging.info('Building embeddings...')
     embeddings = Embeddings(args.embedding_path, list(words.keys()))
 
+    embeddings.add('speaker1')
+    embeddings.add('speaker2')
+
     logging.info('Saving embedding to {}'.format(args.output))
     with open(args.output, 'wb') as f:
         pickle.dump(embeddings, f)
