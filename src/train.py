@@ -45,6 +45,9 @@ def main(args):
     predictor = DualRNNPredictor(metrics=[Accuracy()],
                                  **config['model_parameters'])
 
+    if args.load is not None:
+        predictor.load(args.load)
+
     model_checkpoint = ModelCheckpoint(
         os.path.join(args.model_dir, 'model.pkl'),
         'loss', 1, 'all'
@@ -67,6 +70,7 @@ def _parse_args():
     parser.add_argument('--device', default=None,
                         help='Device used to train. Can be cpu or cuda:0,'
                         ' cuda:1, etc.')
+    parser.add_argument('--load', default=None, type=str)
     args = parser.parse_args()
     return args
 
