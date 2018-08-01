@@ -35,8 +35,9 @@ class DualRNNPredictor(BasePredictor):
         }[loss]
 
     def _run_iter(self, batch, training):
-        context = self.embeddings(batch['context'].to(self.device))
-        options = self.embeddings(batch['options'].to(self.device))
+        with torch.no_grad():
+            context = self.embeddings(batch['context'].to(self.device))
+            options = self.embeddings(batch['options'].to(self.device))
         logits = self.model.forward(
             context.to(self.device),
             batch['context_lens'],
@@ -45,11 +46,13 @@ class DualRNNPredictor(BasePredictor):
         loss = self.loss(logits, batch['labels'].to(self.device))
         return logits, loss
 
-    def _predict_batch(self, batch, max_len=30):
+    def _predict_batch(self, batch):
+        context = self.embeddings(batch['context'].to(self.device))
+        options = self.embeddings(batch['options'].to(self.device))
         logits = self.model.forward(
-            batch['context'].to(self.device),
+            context.to(self.device),
             batch['context_lens'],
-            batch['option'].to(self.device),
+            options.to(self.device),
             batch['option_lens'])
-        predicts = logits.max(-1)[1]
-        return predicts
+        # predicts = logits.max(-1)[1]
+        return logits
