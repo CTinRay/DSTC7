@@ -13,10 +13,12 @@ class DualRNNPredictor(BasePredictor):
     """
 
     def __init__(self, embeddings, dim_hidden,
-                 dropout_rate=0.2, loss='NLLLoss', margin=0, **kwargs):
+                 dropout_rate=0.2, loss='NLLLoss', margin=0,
+                 similarity='inner_product', **kwargs):
         super(DualRNNPredictor, self).__init__(**kwargs)
         self.dim_hidden = dim_hidden
-        self.model = DualRNN(embeddings.size(1), dim_hidden)
+        self.model = DualRNN(embeddings.size(1), dim_hidden,
+                             similarity=similarity)
         self.embeddings = torch.nn.Embedding(embeddings.size(0),
                                              embeddings.size(1))
         self.embeddings.weight = torch.nn.Parameter(embeddings)
