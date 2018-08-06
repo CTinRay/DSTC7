@@ -29,6 +29,7 @@ def main(args):
         config['model_parameters']['valid'].n_negative = config['valid_n_negative']
         config['model_parameters']['valid'].context_padded_len = config['context_padded_len']
         config['model_parameters']['valid'].option_padded_len = config['option_padded_len']
+        config['model_parameters']['valid'].min_context_len = 10000
 
     logging.info('loading train data...')
     with open(config['train'], 'rb') as f:
@@ -38,6 +39,7 @@ def main(args):
         train.context_padded_len = config['context_padded_len']
         train.padding = embeddings.to_index('</s>')
         train.option_padded_len = config['option_padded_len']
+        train.min_context_len = 4
 
     if config['arch'] == 'DualRNN':
         from dualrnn_predictor import DualRNNPredictor

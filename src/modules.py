@@ -52,7 +52,7 @@ class HierRNN(torch.nn.Module):
 
     def __init__(self, dim_embeddings, dim_hidden,
                  similarity='inner_product'):
-        super(DualRNN, self).__init__()
+        super(HierRNN, self).__init__()
         self.context_encoder = HierRNNEncoder(dim_embeddings,
                                               dim_hidden, dim_hidden)
         self.option_encoder = LSTMEncoder(dim_embeddings, dim_hidden)
@@ -97,8 +97,8 @@ class HierRNNEncoder(torch.nn.Module):
                                   1,
                                   bidirectional=True,
                                   batch_first=True)
-        self.rnn2 = LSTMEncoder(dim_hidden1, dim_hidden2)
-        self.register_buffer('padding', torch.zeros(dim_hidden2))
+        self.rnn2 = LSTMEncoder(2 * dim_hidden1, dim_hidden2)
+        self.register_buffer('padding', torch.zeros(2 * dim_hidden2))
 
     def forward(self, seq, ends):
         batch_size = seq.size(0)
@@ -106,8 +106,8 @@ class HierRNNEncoder(torch.nn.Module):
         outputs, _ = self.rnn1(seq)
         end_outputs = [[outputs[b, end] for end in ends[b]]
                        for b in range(batch_size)]
-        end_outputs = pad_and_cat(end_outputs, self.padding)
-        encoded = self.rnn2(end_outputs)
+        lens, end_outputs = pad_and_cat(end_outputs, self.padding)
+        encoded = self.rnn2(end_outputs, list(map(len, ends)))
         return encoded
 
 

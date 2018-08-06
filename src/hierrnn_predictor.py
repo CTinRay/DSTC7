@@ -1,6 +1,6 @@
 import torch
 from base_predictor import BasePredictor
-from modules import DualRNN, NLLLoss, RankLoss
+from modules import HierRNN, NLLLoss, RankLoss
 
 
 class HierRNNPredictor(BasePredictor):
@@ -17,7 +17,7 @@ class HierRNNPredictor(BasePredictor):
                  similarity='inner_product', **kwargs):
         super(HierRNNPredictor, self).__init__(**kwargs)
         self.dim_hidden = dim_hidden
-        self.model = DualRNN(embeddings.size(1), dim_hidden,
+        self.model = HierRNN(embeddings.size(1), dim_hidden,
                              similarity=similarity)
         self.embeddings = torch.nn.Embedding(embeddings.size(0),
                                              embeddings.size(1))
