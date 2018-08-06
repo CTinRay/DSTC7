@@ -1,4 +1,5 @@
 {
+    "arch": "HierRNN",
     "model_parameters" : {
         "embeddings": "../data/task1/ubuntu_embeddings.pkl",
         "dim_hidden": 128,

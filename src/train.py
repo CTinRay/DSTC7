@@ -8,7 +8,6 @@ import traceback
 import json
 from callbacks import ModelCheckpoint, MetricsLogger
 from metrics import Accuracy
-from dualrnn_predictor import DualRNNPredictor
 
 
 def main(args):
@@ -40,8 +39,15 @@ def main(args):
         train.padding = embeddings.to_index('</s>')
         train.option_padded_len = config['option_padded_len']
 
-    predictor = DualRNNPredictor(metrics=[Accuracy()],
-                                 **config['model_parameters'])
+    if config['arch'] == 'DualRNN':
+        from dualrnn_predictor import DualRNNPredictor
+        PredictorClass = DualRNNPredictor
+    elif config['arch'] == 'HierRNN':
+        from hierrnn_predictor import HierRNNPredictor
+        PredictorClass = HierRNNPredictor
+
+    predictor = PredictorClass(metrics=[Accuracy()],
+                               **config['model_parameters'])
 
     if args.load is not None:
         predictor.load(args.load)
