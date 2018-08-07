@@ -1,6 +1,8 @@
 import math
 import torch
 import pdb
+from .transformer import EncoderLayer as TransformerEncoder
+# from .transformer2 import Encoder as TransformerEncoder
 
 
 class DualRNN(torch.nn.Module):
@@ -84,6 +86,59 @@ class HierRNN(torch.nn.Module):
         return logits
 
 
+class RecurrentTransformer(torch.nn.Module):
+    """
+
+    Args:
+
+    """
+
+    def __init__(self, dim_embeddings, n_heads, dropout_rate, dim_ff):
+        super(RecurrentTransformer, self).__init__()
+        self.transformer = RecurrentTransformerEncoder(
+            dim_embeddings,
+            n_heads, dropout_rate, dim_ff)
+        self.last_encoder = TransformerEncoder(dim_embeddings, n_heads,
+                                               dropout_rate, dim_ff)
+        self.mlp = torch.nn.Sequential(
+            torch.nn.Linear(dim_embeddings, 256),
+            torch.nn.ReLU(),
+            torch.nn.Linear(256, 1)
+        )
+        self.register_buffer('padding', torch.zeros(dim_embeddings))
+
+    def forward(self, context, context_ends, options, option_lens):
+        batch_size = context.size(0)
+        encoded = self.transformer(context, context_ends)
+        logits = []
+        for i, option in enumerate(options.transpose(1, 0)):
+            option = self.transformer.encoder(
+                option,
+                [option_lens[b][i] for b in range(batch_size)])
+            option = [opt[:ol]
+                      for opt, ol in zip(option,
+                                         [option_lens[b][i]
+                                          for b in range(batch_size)])]
+
+            tr_inputs = [torch.cat([encoded[b], opt], 0)
+                         for b, (opt, ol) in enumerate(zip(option,
+                                                           option_lens))]
+            lens, tr_inputs = pad_seqs(tr_inputs, self.padding)
+
+            outputs = self.transformer.recurrent(
+                tr_inputs, lens
+            )
+
+            # logit.size() == (batch,)
+            logit = self.last_encoder(outputs, lens)
+            logit = logit.max(1)[0]
+            logit = self.mlp(logit).squeeze(-1)
+            logits.append(logit)
+
+        logits = torch.stack(logits, 1)
+        return logits
+
+
 class HierRNNEncoder(torch.nn.Module):
     """ 
 
@@ -108,6 +163,55 @@ class HierRNNEncoder(torch.nn.Module):
                        for b in range(batch_size)]
         lens, end_outputs = pad_and_cat(end_outputs, self.padding)
         encoded = self.rnn2(end_outputs, list(map(len, ends)))
+        return encoded
+
+
+class RecurrentTransformerEncoder(torch.nn.Module):
+    """ 
+
+    Args:
+
+    """
+    def __init__(self, dim_embeddings,
+                 n_heads=6, dropout_rate=0.1, dim_ff=128):
+        super(RecurrentTransformerEncoder, self).__init__()
+        self.encoder = TransformerEncoder(
+            dim_embeddings,
+            n_heads,
+            dropout_rate,
+            dim_ff
+        )
+        self.recurrent = TransformerEncoder(
+            dim_embeddings,
+            n_heads,
+            dropout_rate,
+            dim_ff)
+        self.register_buffer('padding', torch.zeros(dim_embeddings))
+
+    def forward(self, seqs, ends):
+        first_ends = [end[0] + 1 for end in ends]
+        encoded = [seq for seq in self.encoder(seqs[:, :max(first_ends)],
+                                               first_ends)]
+        context_lens = list(map(len, ends))
+        batch_size = seqs.size(0)
+
+        for i in range(0, max(context_lens) - 1):
+            workings = filter(lambda j: context_lens[j] > i + 1,
+                              range(batch_size))
+            tr_inputs = []
+            for working in workings:
+                start, end = ends[working][i], ends[working][i + 1]
+                tr_input = torch.cat(
+                    [encoded[working], seqs[working, start:end]], 0
+                )
+                tr_inputs.append(tr_input)
+
+            lens, tr_inputs = pad_seqs(tr_inputs, self.padding)
+            outputs = self.recurrent(tr_inputs, lens)
+
+            for j, working in enumerate(workings):
+                encoded[working] = outputs[j][- end + start:]
+
         return encoded
 
 
@@ -217,3 +321,19 @@ def pad_and_cat(tensors, padding):
                            for t in tensors], dim=0)
 
     return n_tensors, tensors
+
+
+def pad_seqs(tensors, pad_element):
+    lengths = list(map(len, tensors))
+    max_length = max(lengths)
+    padded = []
+    for tensor, length in zip(tensors, lengths):
+        if max_length > length:
+            padding = torch.stack(
+                [pad_element] * (max_length - length), 0
+            )
+            padded.append(torch.cat([tensor, padding], 0))
+        else:
+            padded.append(tensor)
+
+    return lengths, torch.stack(padded, 0)
