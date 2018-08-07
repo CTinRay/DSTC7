@@ -53,7 +53,7 @@ class HierRNNPredictor(BasePredictor):
         options = self.embeddings(batch['options'].to(self.device))
         logits = self.model.forward(
             context.to(self.device),
-            batch['utterence_ends'],
+            batch['utterance_ends'],
             options.to(self.device),
             batch['option_lens'])
         # predicts = logits.max(-1)[1]

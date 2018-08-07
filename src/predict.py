@@ -35,9 +35,20 @@ def main(args):
             config['context_padded_len']
         config['model_parameters']['valid'].option_padded_len = \
             config['option_padded_len']
+        config['model_parameters']['valid'].min_context_len = 10000
 
-    predictor = DualRNNPredictor(metrics=[Accuracy()],
-                                 **config['model_parameters'])
+    if config['arch'] == 'DualRNN':
+        from dualrnn_predictor import DualRNNPredictor
+        PredictorClass = DualRNNPredictor
+    elif config['arch'] == 'HierRNN':
+        from hierrnn_predictor import HierRNNPredictor
+        PredictorClass = HierRNNPredictor
+    elif config['arch'] == 'RecurrentTransformer':
+        from recurrent_transformer_predictor import RTPredictor
+        PredictorClass = RTPredictor
+
+    predictor = PredictorClass(metrics=[Accuracy()],
+                               **config['model_parameters'])
 
     model_path = os.path.join(
         args.model_dir,

@@ -47,6 +47,9 @@ def main(args):
     elif config['arch'] == 'HierRNN':
         from hierrnn_predictor import HierRNNPredictor
         PredictorClass = HierRNNPredictor
+    elif config['arch'] == 'RecurrentTransformer':
+        from recurrent_transformer_predictor import RTPredictor
+        PredictorClass = RTPredictor
 
     predictor = PredictorClass(metrics=[Accuracy()],
                                **config['model_parameters'])
