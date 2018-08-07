@@ -35,7 +35,7 @@ class Accuracy(Metrics):
             batch (dict): batch.
         """
         # add noise to deal with cases where all predict score are identical
-        predicts += torch.rand_like(predicts) * self.noise
+        predicts *= (1 + torch.rand_like(predicts) * self.noise)
         self.n += predicts.size(0)
         sorted_predicts = torch.sort(predicts)[0]
         for i, at in enumerate(self.ats):
