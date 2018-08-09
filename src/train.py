@@ -39,7 +39,7 @@ def main(args):
         train.context_padded_len = config['context_padded_len']
         train.padding = embeddings.to_index('</s>')
         train.option_padded_len = config['option_padded_len']
-        train.min_context_len = 4
+        train.min_context_len = 10000
 
     if config['arch'] == 'DualRNN':
         from dualrnn_predictor import DualRNNPredictor

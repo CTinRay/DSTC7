@@ -71,6 +71,10 @@ class DSTC7Dataset(Dataset):
             list(filter(lambda e: e < self.context_padded_len,
                         data['utterance_ends']))
             for data in datas]
+        for end in batch['utterance_ends']:
+            if len(end) == 0:
+                end.append(self.context_padded_len - 1)
+
         batch['labels'] = torch.tensor([data['labels'] for data in datas])
 
         # build tensor of context

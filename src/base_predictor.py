@@ -83,10 +83,11 @@ class BasePredictor():
             num_workers=1)
 
         ys_ = []
-        for batch in dataloader:
-            with torch.no_grad():
-                batch_y_ = predict_fn(batch).data
-            ys_.append(batch_y_)
+        with torch.no_grad():
+            for batch in dataloader:
+                with torch.no_grad():
+                    batch_y_ = predict_fn(batch).data
+                    ys_.append(batch_y_)
 
         ys_ = torch.cat(ys_, 0)
 
@@ -130,13 +131,16 @@ class BasePredictor():
             if training and i >= iter_in_epoch:
                 break
 
-            output, batch_loss = \
-                self._run_iter(batch, training)
-
             if training:
+                output, batch_loss = \
+                  self._run_iter(batch, training)
                 self.optimizer.zero_grad()
                 batch_loss.backward()
                 self.optimizer.step()
+            else:
+                with torch.no_grad():
+                    output, batch_loss = \
+                      self._run_iter(batch, training)
 
             # accumulate loss and metric scores
             loss += batch_loss.item()
