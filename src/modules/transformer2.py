@@ -1,3 +1,4 @@
+import math
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -11,197 +12,154 @@ VALID_ACTIVATION = [a for a in dir(nn.modules.activation)
 VALID_BATCHNORM_DIM = {1, 2, 3}
 
 
-class DepthwiseSeperableConv1d(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size):
-        super(DepthwiseSeperableConv1d, self).__init__()
+class MultiHeadAttention(nn.Module):
+    def __init__(self, dim_in, dim_out, n_heads, dropout_rate=0.2):
+        super(MultiHeadAttention, self).__init__()
 
-        self.depthwise_conv1d = nn.Conv1d(
-            in_channels, in_channels, kernel_size, groups=in_channels,
-            padding=kernel_size // 2)
-        self.pointwise_conv1d = nn.Conv1d(in_channels, out_channels, 1)
-
-    def forward(self, x):
-        x = self.depthwise_conv1d(x)
-        x = self.pointwise_conv1d(x)
-
-        return x
-
-
-class MultiHeadSelfAttention(nn.Module):
-    def __init__(self, input_size, output_size, n_heads, max_pos_distance):
-        super(MultiHeadSelfAttention, self).__init__()
-
-        if output_size % n_heads != 0:
+        if dim_out % n_heads != 0:
             raise ValueError(
-                'MultiHeadSelfAttention: output_size({output_size}) isn\'t'
-                'a multiplier of n_heads({n_heads})')
+                'MultiHeadSelfAttention: Output dimensions {dim_out} isn\'t'
+                'a multiplier of number of heads {n_heads}'.format(
+                    dim_out=dim_out,
+                    n_heads=n_heads
+                )
+            )
 
-        self.output_size = output_size
         self.n_heads = n_heads
-        self.d_head = output_size // n_heads
-        self.max_pos_distance = max_pos_distance
+        self.dim_head = dim_out // n_heads
+        self.linear_q = nn.Linear(dim_in, dim_out)
+        self.linear_k = nn.Linear(dim_in, dim_out)
+        self.linear_v = nn.Linear(dim_in, dim_out)
+        self.linear_o = nn.Linear(dim_in, dim_out)
+        self.dropout = torch.nn.Dropout(dropout_rate)
 
-        self.pos_embedding_K = nn.Embedding(2 * max_pos_distance + 1, self.d_head)
-        self.pos_embedding_V = nn.Embedding(2 * max_pos_distance + 1, self.d_head)
+    def forward(self, query, value, mask):
+        """
+        Args:
+            query (FloatTensor): (batch_size, query_len, dim_in)
+            value (FloatTensor): (batch_size, value_len, dim_in)
+            mask (ByteTensor): (batch_size, value_len)
 
-        self.linears = nn.ModuleList([
-            nn.Linear(input_size, output_size),
-            nn.Linear(input_size, output_size),
-            nn.Linear(input_size, output_size),
-            nn.Linear(output_size, output_size)
-        ])
+        Returns:
+            (batch_size, query_len, dim_out)
+        """
+        batch_size, query_len, dim_feature = query.shape
+        batch_size, value_len, dim_feature = value.shape
 
-    def forward(self, x, pad_mask):
-        batch_size, input_len, *_ = x.shape
-
-        Q, K, V = [l(x) for l in self.linears[:3]]
-        Q, K, V = [
-            x.reshape(batch_size, -1, self.n_heads, self.d_head).transpose(1, 2)
-            for x in (Q, K, V)
+        q = self.linear_q(query)
+        k, v = self.linear_k(value), self.linear_v(value)
+        q, k, v = [
+            x.reshape(batch_size, query_len, self.n_heads, self.dim_head)
+             .transpose(1, 2)
+            for x in (q, k, v)
         ]
+        # q.shape == (batch_size, n_heads, query_len, dim_head)
+        # k.shape == v.shape == (batch_size, n_heads, value_len, dim_head)
 
-        pos_index = torch.arange(input_len).reshape(1, -1).repeat(input_len, 1)
-        pos_index = pos_index - pos_index.t()
-        pos_index = pos_index.clamp(-self.max_pos_distance, self.max_pos_distance)
-        pos_index += self.max_pos_distance
-        # pos_index = pos_index.to(dtype=torch.int64, device=constants.DEVICE)
-        pos_index = pos_index.to(dtype=torch.int64, device=torch.device('cuda:0'))
+        # calculate attention score
+        score = torch.matmul(q, k.transpose(-1, -2)) / np.sqrt(self.dim_head)
 
-        # calculate attention score (relative position representation #1)
-        S1 = torch.matmul(Q, K.transpose(-1, -2))
-        Q = Q.reshape(-1, input_len, self.d_head).transpose(0, 1)
-        pos_emb_K = self.pos_embedding_K(pos_index)
-        S2 = torch.matmul(Q, pos_emb_K.transpose(-1, -2)).transpose(0, 1)
-        S2 = S2.reshape(batch_size, self.n_heads, input_len, input_len)
-        S = (S1 + S2) / np.sqrt(self.d_head)
+        # mask out padding and apply attention weights
+        score.masked_fill_(
+            mask.view(batch_size, 1, 1, value_len) == 0, -math.inf
+        )
+        weights = F.softmax(score, dim=-1)
+        weights = self.dropout(weights)
+        # weight.shape == (batch_size, n_heads, query_len, value_len)
 
-        # set score of V padding tokens to 0
-        S *= pad_mask.to(dtype=torch.float32).reshape(batch_size, 1, 1, -1)
-        A = F.softmax(S, dim=-1)
+        attention = torch.matmul(weights, v)
+        # attention.shape == (batch_size, n_heads, query_len, dim_head)
 
-        # apply attention to get output (relative position representation #2)
-        O1 = torch.matmul(A, V)
-        A = A.reshape(-1, input_len, input_len).transpose(0, 1)
-        pos_emb_V = self.pos_embedding_V(pos_index)
-        O2 = torch.matmul(A, pos_emb_V).transpose(0, 1)
-        O2 = O2.reshape(batch_size, self.n_heads, input_len, self.d_head)
-        output = O1 + O2
-        output = output.transpose(1, 2).reshape(batch_size, -1, self.output_size)
-        output = self.linears[-1](output)
-
+        # reshape to concat results
+        attention = attention.transpose(1, 2) \
+                             .reshape(batch_size, query_len,
+                                      self.n_heads * self.dim_head)
+        output = self.linear_o(attention)
         return output
 
 
-class PointwiseFeedForward(nn.Module):
-    def __init__(self, input_size):
-        super(PointwiseFeedForward, self).__init__()
-
-        self.linear1 = nn.Linear(input_size, input_size)
-        self.activation = Activation('ReLU')
-        self.linear2 = nn.Linear(input_size, input_size)
-
-    def forward(self, x):
-        x = self.activation(self.linear1(x))
-        x = self.linear2(x)
-
-        return x
-
-
-class Activation(nn.Module):
-    def __init__(self, activation, *args, **kwargs):
-        super(Activation, self).__init__()
-
-        if activation in VALID_ACTIVATION:
-            self.activation = \
-                getattr(nn.modules.activation, activation)(*args, **kwargs)
-        else:
-            raise ValueError(
-                'Activation: {activation} is not a valid activation function')
-
-    def forward(self, x):
-        return self.activation(x)
-
-
-class BatchNormResidual(nn.Module):
-    def __init__(self, sublayer, n_features, dim=1, transpose=False, activation=None,
-                 dropout=0):
-        super(BatchNormResidual, self).__init__()
-
-        self.sublayer = sublayer
-        if dim in VALID_BATCHNORM_DIM:
-            batch_norm = [nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d]
-            self.batch_norm = batch_norm[dim - 1](n_features)
-        else:
-            raise ValueError(
-                'BatchNormResidual: dim must be one of {{1, 2, 3}}, but got {dim}')
-        self.transpose = transpose
-        self.activation = activation
-        self.dropout = nn.Dropout(p=dropout) if dropout != 0 else None
-
-    def forward(self, x, *args, **kwargs):
-        y = self.sublayer(x, *args, **kwargs)
-
-        if self.transpose:
-            y = y.transpose(1, 2).contiguous()
-        y = self.batch_norm(y)
-        if self.transpose:
-            y = y.transpose(1, 2)
-        y += x
-
-        if self.activation:
-            y = self.activation(y)
-        if self.dropout:
-            y = self.dropout(y)
-
-        return y
-
-
 class EncoderBlock(nn.Module):
-    def __init__(self, d_model, n_convs, kernel_size, n_heads,
-                 max_pos_distance, dropout):
+    def __init__(self, dim_input, dim_output, n_heads, dropout_rate, dim_ff):
         super(EncoderBlock, self).__init__()
+        self.self_attn = \
+            MultiHeadAttention(dim_input, dim_output, n_heads, dropout_rate)
+        self.ff = torch.nn.Sequential(
+            nn.Linear(dim_output, dim_ff),
+            torch.nn.ReLU(),
+            nn.Linear(dim_ff, dim_output)
+        )
+        self.dropout = torch.nn.Dropout(dropout_rate)
 
-        self.convs = nn.ModuleList([
-            BatchNormResidual(
-                DepthwiseSeperableConv1d(d_model, d_model, kernel_size), d_model,
-                activation=Activation('ReLU'), dropout=dropout)
-            for _ in range(n_convs - 1)
-        ])
-        self.attention = BatchNormResidual(
-            MultiHeadSelfAttention(d_model, d_model, n_heads, max_pos_distance),
-            d_model, transpose=True, dropout=dropout)
-        self.feedforward = BatchNormResidual(
-            PointwiseFeedForward(d_model), d_model, transpose=True,
-            activation=Activation('ReLU'), dropout=dropout)
+        self.norm1 = LayerNorm(dim_output)
+        self.norm2 = LayerNorm(dim_output)
 
-    def forward(self, x, x_pad_mask):
-        x = self.attention(x, x_pad_mask)
-        x = self.feedforward(x)
+    def forward(self, x, mask):
+        # self-attention sublayer
+        y = self.norm1(x + self.dropout(self.self_attn(x, x, mask)))
 
-        return x
+        # feed forward sublayer
+        z = self.norm2(y + self.dropout(self.ff(y)))
+
+        return z
 
 
 class Encoder(nn.Module):
-    def __init__(self, input_size, n_heads, dropout, ph, n_convs=1, kernel_size=1, d_model=300, 
-                 n_blocks=1, max_pos_distance=20):
+    def __init__(self, dim_input, dim_output, n_heads,
+                 dropout_rate=0.1, dim_ff=512,
+                 n_blocks=1, max_pos_distance=1000):
         super(Encoder, self).__init__()
-
-        self.conv = DepthwiseSeperableConv1d(input_size, d_model, kernel_size)
-        self.batch_norm = nn.BatchNorm1d(d_model)
-        self.activation = Activation('ReLU')
-        self.dropout = nn.Dropout(p=dropout) if dropout != 0 else None
+        self.positional_encoding = \
+            PositionalEncoding(dim_input, dropout_rate, max_pos_distance)
         self.encoder_blocks = nn.ModuleList([
-            EncoderBlock(
-                d_model, n_convs, kernel_size, n_heads, max_pos_distance, dropout)
+            EncoderBlock(dim_input, dim_output, n_heads, dropout_rate, dim_ff)
             for i in range(n_blocks)
         ])
 
     def forward(self, x, lens):
-        x_pad_mask = torch.zeros_like(x[:, :, :1])
+        x = self.positional_encoding(x)
+
+        mask = torch.zeros_like(x[:, :, 0])
         for i, ll in enumerate(lens):
-            x_pad_mask[i, :ll] = 1
+            mask[i, :ll] = 1
 
         for encoder_block in self.encoder_blocks:
-            x = encoder_block(x, x_pad_mask)
+            x = encoder_block(x, mask)
 
+        return x
+
+
+class PositionalEncoding(nn.Module):
+    "Implement the PE function."
+    def __init__(self, d_model, dropout, max_len=2000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        # Compute the positional encodings once in log space.
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) *
+                             -(math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+        self.register_buffer('pe', pe)
+        self.pe.require_grad = False
+
+    def forward(self, x):
+        x = x + self.pe[:, :x.size(1)]
+        return self.dropout(x)
+
+
+class LayerNorm(nn.Module):
+    "Construct a layernorm module (See citation for details)."
+    def __init__(self, features, eps=1e-6):
+        super(LayerNorm, self).__init__()
+        self.a_2 = nn.Parameter(torch.ones(features))
+        self.b_2 = nn.Parameter(torch.zeros(features))
+        self.eps = eps
+
+    def forward(self, x):
+        mean = x.mean(-1, keepdim=True)
+        std = x.std(-1, keepdim=True)
+        # return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
         return x

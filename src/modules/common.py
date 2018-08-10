@@ -1,8 +1,8 @@
 import math
 import torch
 import pdb
-from .transformer import EncoderLayer as TransformerEncoder
-# from .transformer2 import Encoder as TransformerEncoder
+# from .transformer import EncoderLayer as TransformerEncoder
+from .transformer2 import Encoder as TransformerEncoder
 
 
 class DualRNN(torch.nn.Module):
@@ -98,7 +98,9 @@ class RecurrentTransformer(torch.nn.Module):
         self.transformer = RecurrentTransformerEncoder(
             dim_embeddings,
             n_heads, dropout_rate, dim_ff)
-        self.last_encoder = TransformerEncoder(dim_embeddings, n_heads,
+        self.last_encoder = TransformerEncoder(dim_embeddings,
+                                               dim_embeddings,
+                                               n_heads,
                                                dropout_rate, dim_ff)
         self.mlp = torch.nn.Sequential(
             torch.nn.Linear(dim_embeddings, 256),
@@ -177,11 +179,13 @@ class RecurrentTransformerEncoder(torch.nn.Module):
         super(RecurrentTransformerEncoder, self).__init__()
         self.encoder = TransformerEncoder(
             dim_embeddings,
+            dim_embeddings,
             n_heads,
             dropout_rate,
             dim_ff
         )
         self.recurrent = TransformerEncoder(
+            dim_embeddings,
             dim_embeddings,
             n_heads,
             dropout_rate,
@@ -189,15 +193,19 @@ class RecurrentTransformerEncoder(torch.nn.Module):
         self.register_buffer('padding', torch.zeros(dim_embeddings))
 
     def forward(self, seqs, ends):
-        first_ends = [end[0] + 1 for end in ends]
-        encoded = [seq for seq in self.encoder(seqs[:, :max(first_ends)],
-                                               first_ends)]
+        first_ends = [end[0] for end in ends]
+        encoded = self.encoder(seqs[:, :max(first_ends)], first_ends)
+        encoded = [seq[:end] for seq, end in zip(encoded, first_ends)]
+
         context_lens = list(map(len, ends))
         batch_size = seqs.size(0)
 
         for i in range(0, max(context_lens) - 1):
-            workings = filter(lambda j: context_lens[j] > i + 1,
-                              range(batch_size))
+            workings = list(
+                filter(lambda j: context_lens[j] > i + 1,
+                       range(batch_size))
+            )
+
             tr_inputs = []
             for working in workings:
                 start, end = ends[working][i], ends[working][i + 1]
@@ -210,6 +218,7 @@ class RecurrentTransformerEncoder(torch.nn.Module):
             outputs = self.recurrent(tr_inputs, lens)
 
             for j, working in enumerate(workings):
+                start, end = ends[working][i], ends[working][i + 1]
                 encoded[working] = outputs[j][- end + start:]
 
         return encoded

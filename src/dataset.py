@@ -73,7 +73,7 @@ class DSTC7Dataset(Dataset):
             for data in datas]
         for end in batch['utterance_ends']:
             if len(end) == 0:
-                end.append(self.context_padded_len - 1)
+                end.append(40)
 
         batch['labels'] = torch.tensor([data['labels'] for data in datas])
 
