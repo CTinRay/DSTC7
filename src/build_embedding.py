@@ -43,6 +43,7 @@ def collect_words(train_path, valid_path, n_workers=16):
 
         for utterance in utterances:
             for word in utterance:
+                word = word.lower()
                 if word not in words:
                     words[word] = 0
                 else:

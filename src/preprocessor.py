@@ -94,7 +94,7 @@ class Preprocessor:
         processed['speaker'] = []
         for message in data['messages-so-far']:
             processed['context'].append(
-                self.sentence_to_indices(message['utterance'])
+                self.sentence_to_indices(message['utterance'].lower())
             )
             speaker = message['speaker'].replace('student', 'participant_1') \
                                         .replace('advisor', 'participant_2')
@@ -106,12 +106,12 @@ class Preprocessor:
         processed['options'] = []
         for option in data['options-for-correct-answers']:
             processed['options'].append(
-                self.sentence_to_indices(option['utterance'])
+                self.sentence_to_indices(option['utterance'].lower())
             )
 
         for option in data['options-for-next']:
             processed['options'].append(
-                self.sentence_to_indices(option['utterance'])
+                self.sentence_to_indices(option['utterance'].lower())
             )
 
         processed['n_corrects'] = len(data['options-for-correct-answers'])
