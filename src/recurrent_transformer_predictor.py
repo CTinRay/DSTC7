@@ -14,10 +14,12 @@ class RTPredictor(BasePredictor):
 
     def __init__(self, embeddings, n_heads=6,
                  dropout_rate=0.2, dim_ff=512,
-                 loss='NLLLoss', margin=0, **kwargs):
+                 dim_encoder=102, dim_encoder_ff=256,
+                 loss='NLLLoss', margin=0, threshold=None, **kwargs):
         super(RTPredictor, self).__init__(**kwargs)
         self.model = RecurrentTransformer(
-            embeddings.size(1), n_heads, dropout_rate, dim_ff
+            embeddings.size(1), n_heads, dropout_rate, dim_ff,
+            dim_encoder, dim_encoder_ff
         )
         self.embeddings = torch.nn.Embedding(embeddings.size(0),
                                              embeddings.size(1))
@@ -33,7 +35,7 @@ class RTPredictor(BasePredictor):
 
         self.loss = {
             'NLLLoss': NLLLoss(),
-            'RankLoss': RankLoss(margin)
+            'RankLoss': RankLoss(margin, threshold)
         }[loss]
 
     def _run_iter(self, batch, training):
@@ -53,7 +55,7 @@ class RTPredictor(BasePredictor):
         options = self.embeddings(batch['options'].to(self.device))
         logits = self.model.forward(
             context.to(self.device),
-            batch['utterence_ends'],
+            batch['utterance_ends'],
             options.to(self.device),
             batch['option_lens'])
         # predicts = logits.max(-1)[1]

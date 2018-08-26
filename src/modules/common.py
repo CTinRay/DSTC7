@@ -86,61 +86,6 @@ class HierRNN(torch.nn.Module):
         return logits
 
 
-class RecurrentTransformer(torch.nn.Module):
-    """
-
-    Args:
-
-    """
-
-    def __init__(self, dim_embeddings, n_heads, dropout_rate, dim_ff):
-        super(RecurrentTransformer, self).__init__()
-        self.transformer = RecurrentTransformerEncoder(
-            dim_embeddings,
-            n_heads, dropout_rate, dim_ff)
-        self.last_encoder = TransformerEncoder(dim_embeddings,
-                                               dim_embeddings,
-                                               n_heads,
-                                               dropout_rate, dim_ff)
-        self.mlp = torch.nn.Sequential(
-            torch.nn.Linear(dim_embeddings, 256),
-            torch.nn.ReLU(),
-            torch.nn.Linear(256, 1)
-        )
-        self.register_buffer('padding', torch.zeros(dim_embeddings))
-
-    def forward(self, context, context_ends, options, option_lens):
-        batch_size = context.size(0)
-        encoded = self.transformer(context, context_ends)
-        logits = []
-        for i, option in enumerate(options.transpose(1, 0)):
-            option = self.transformer.encoder(
-                option,
-                [option_lens[b][i] for b in range(batch_size)])
-            option = [opt[:ol]
-                      for opt, ol in zip(option,
-                                         [option_lens[b][i]
-                                          for b in range(batch_size)])]
-
-            tr_inputs = [torch.cat([encoded[b], opt], 0)
-                         for b, (opt, ol) in enumerate(zip(option,
-                                                           option_lens))]
-            lens, tr_inputs = pad_seqs(tr_inputs, self.padding)
-
-            outputs = self.transformer.recurrent(
-                tr_inputs, lens
-            )
-
-            # logit.size() == (batch,)
-            logit = self.last_encoder(outputs, lens)
-            logit = logit.max(1)[0]
-            logit = self.mlp(logit).squeeze(-1)
-            logits.append(logit)
-
-        logits = torch.stack(logits, 1)
-        return logits
-
-
 class HierRNNEncoder(torch.nn.Module):
     """ 
 
@@ -165,62 +110,6 @@ class HierRNNEncoder(torch.nn.Module):
                        for b in range(batch_size)]
         lens, end_outputs = pad_and_cat(end_outputs, self.padding)
         encoded = self.rnn2(end_outputs, list(map(len, ends)))
-        return encoded
-
-
-class RecurrentTransformerEncoder(torch.nn.Module):
-    """ 
-
-    Args:
-
-    """
-    def __init__(self, dim_embeddings,
-                 n_heads=6, dropout_rate=0.1, dim_ff=128):
-        super(RecurrentTransformerEncoder, self).__init__()
-        self.encoder = TransformerEncoder(
-            dim_embeddings,
-            dim_embeddings,
-            n_heads,
-            dropout_rate,
-            dim_ff
-        )
-        self.recurrent = TransformerEncoder(
-            dim_embeddings,
-            dim_embeddings,
-            n_heads,
-            dropout_rate,
-            dim_ff)
-        self.register_buffer('padding', torch.zeros(dim_embeddings))
-
-    def forward(self, seqs, ends):
-        first_ends = [end[0] for end in ends]
-        encoded = self.encoder(seqs[:, :max(first_ends)], first_ends)
-        encoded = [seq[:end] for seq, end in zip(encoded, first_ends)]
-
-        context_lens = list(map(len, ends))
-        batch_size = seqs.size(0)
-
-        for i in range(0, max(context_lens) - 1):
-            workings = list(
-                filter(lambda j: context_lens[j] > i + 1,
-                       range(batch_size))
-            )
-
-            tr_inputs = []
-            for working in workings:
-                start, end = ends[working][i], ends[working][i + 1]
-                tr_input = torch.cat(
-                    [encoded[working], seqs[working, start:end]], 0
-                )
-                tr_inputs.append(tr_input)
-
-            lens, tr_inputs = pad_seqs(tr_inputs, self.padding)
-            outputs = self.recurrent(tr_inputs, lens)
-
-            for j, working in enumerate(workings):
-                start, end = ends[working][i], ends[working][i + 1]
-                encoded[working] = outputs[j][- end + start:]
-
         return encoded
 
 
@@ -265,24 +154,37 @@ class RankLoss(torch.nn.Module):
 
     """
 
-    def __init__(self, margin=0):
+    def __init__(self, margin=0.2, threshold=None):
         super(RankLoss, self).__init__()
         self.margin_ranking_loss = torch.nn.MarginRankingLoss(margin)
+        self.margin = margin
+        self.threshold = None
         self.margin = margin
 
     def forward(self, logits, labels):
         positive_mask = (1 - labels).byte()
-        positive_min = torch.min(logits.masked_fill(
-            positive_mask, math.inf), -1)[0]
+        positive_logits = logits.masked_fill(positive_mask, math.inf)
+        positive_min = lse_min(positive_logits)
 
         negative_mask = labels.byte()
-        negative_max = torch.max(logits.masked_fill(
-            negative_mask, -math.inf), -1)[0]
+        negative_logits = logits.masked_fill(negative_mask, -math.inf)
+        negative_max = lse_max(negative_logits)
 
-        loss = self.margin_ranking_loss(positive_min, negative_max,
-                                        torch.ones_like(negative_max))
-        loss = (negative_max - positive_min).mean()
-        return loss
+        ones = torch.ones_like(negative_max)
+        if self.threshold is None:
+            loss = self.margin_ranking_loss(positive_min,
+                                            negative_max + self.margin,
+                                            ones)
+        else:
+            loss = (self.margin_ranking_loss(positive_min,
+                                             self.threshold + self.margin,
+                                             ones)
+                    + self.margin_ranking_loss(negative_max,
+                                               self.threshold - self.margin,
+                                               - ones)
+                    )
+
+        return loss.mean()
 
 
 class NLLLoss(torch.nn.Module):
@@ -346,3 +248,13 @@ def pad_seqs(tensors, pad_element):
             padded.append(tensor)
 
     return lengths, torch.stack(padded, 0)
+
+
+def lse_max(a, dim=-1):
+    max_a = torch.max(a, dim=dim, keepdim=True)[0]
+    lse = torch.log(torch.sum(torch.exp(a - max_a), dim=dim)) + max_a
+    return lse
+
+
+def lse_min(a, dim=-1):
+    return -lse_max(-a, dim)

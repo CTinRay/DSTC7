@@ -6,12 +6,6 @@ import numpy as np
 import pdb
 
 
-VALID_ACTIVATION = [a for a in dir(nn.modules.activation)
-                    if not a.startswith('__')
-                    and a not in ['torch', 'warnings', 'F', 'Parameter', 'Module']]
-VALID_BATCHNORM_DIM = {1, 2, 3}
-
-
 class MultiHeadAttention(nn.Module):
     def __init__(self, dim_in, dim_out, n_heads, dropout_rate=0.2):
         super(MultiHeadAttention, self).__init__()
@@ -30,7 +24,7 @@ class MultiHeadAttention(nn.Module):
         self.linear_q = nn.Linear(dim_in, dim_out)
         self.linear_k = nn.Linear(dim_in, dim_out)
         self.linear_v = nn.Linear(dim_in, dim_out)
-        self.linear_o = nn.Linear(dim_in, dim_out)
+        self.linear_o = nn.Linear(dim_out, dim_out)
         self.dropout = torch.nn.Dropout(dropout_rate)
 
     def forward(self, query, value, mask):
@@ -49,7 +43,7 @@ class MultiHeadAttention(nn.Module):
         q = self.linear_q(query)
         k, v = self.linear_k(value), self.linear_v(value)
         q, k, v = [
-            x.reshape(batch_size, query_len, self.n_heads, self.dim_head)
+            x.reshape(batch_size, -1, self.n_heads, self.dim_head)
              .transpose(1, 2)
             for x in (q, k, v)
         ]
@@ -92,10 +86,14 @@ class EncoderBlock(nn.Module):
 
         self.norm1 = LayerNorm(dim_output)
         self.norm2 = LayerNorm(dim_output)
+        self.residual1 = (dim_input == dim_output)
 
     def forward(self, x, mask):
         # self-attention sublayer
-        y = self.norm1(x + self.dropout(self.self_attn(x, x, mask)))
+        if self.residual1:
+            y = self.norm1(x + self.dropout(self.self_attn(x, x, mask)))
+        else:
+            y = self.norm1(self.dropout(self.self_attn(x, x, mask)))
 
         # feed forward sublayer
         z = self.norm2(y + self.dropout(self.ff(y)))
@@ -118,14 +116,95 @@ class Encoder(nn.Module):
     def forward(self, x, lens):
         x = self.positional_encoding(x)
 
-        mask = torch.zeros_like(x[:, :, 0])
-        for i, ll in enumerate(lens):
-            mask[i, :ll] = 1
-
+        mask = make_mask(x, lens)
         for encoder_block in self.encoder_blocks:
             x = encoder_block(x, mask)
 
         return x
+
+
+class Connection(nn.Module):
+    def __init__(self, dim_in, dim_out, n_heads,
+                 dropout_rate=0.1, dim_ff=512,
+                 max_pos_distance=1000):
+        super(Connection, self).__init__()
+        if dim_out % n_heads != 0:
+            raise ValueError(
+                'MultiHeadSelfAttention: Output dimensions {dim_out} isn\'t'
+                'a multiplier of number of heads {n_heads}'.format(
+                    dim_out=dim_out,
+                    n_heads=n_heads
+                )
+            )
+
+        self.n_heads = n_heads
+        self.dim_head = dim_out // n_heads
+        self.linear_q = nn.Linear(dim_in, dim_out)
+        self.linear_k = nn.Linear(dim_in, dim_out)
+        self.linear_v = nn.Linear(dim_in, dim_out)
+        self.linear_o = nn.Linear(dim_out, dim_out)
+        self.dropout = torch.nn.Dropout(dropout_rate)
+        self.b_prev = torch.nn.Parameter(torch.zeros(1, 1, dim_in))
+        self.b_self = torch.nn.Parameter(torch.zeros(1, 1, dim_in))
+
+    def forward(self, seq1, seq2, seq_len1):
+        """
+        Args:
+            seq1 (FloatTensor): (batch_size, len1, dim_in)
+            seq2 (FloatTensor): (batch_size, len2, dim_in)
+            seq_len1 (int): Length of sequences in seq1.
+
+        Returns:
+            (batch_size, query_len, dim_out)
+        """
+        batch_size, len1, dim_feature = seq1.shape
+        batch_size, len2, dim_feature = seq2.shape
+
+        query = seq2 + self.b_self
+        key = torch.cat([seq1 + self.b_prev, seq2 + self.b_self], 1)
+        value = torch.cat([seq1, seq2], 1)
+
+        q = self.linear_q(query)
+        k, v = self.linear_k(key), self.linear_v(value)
+        q, k, v = [
+            x.reshape(batch_size, -1, self.n_heads, self.dim_head)
+             .transpose(1, 2)
+            for x in (q, k, v)
+        ]
+        # q.shape == (batch_size, n_heads, len2, dim_head)
+        # k.shape == v.shape == (batch_size, n_heads, len1 + len2, dim_head)
+
+        # calculate attention score
+        score_prev = (torch.matmul(q, k[:, :, :len1].transpose(-1, -2))
+                      / np.sqrt(self.dim_head))
+        score_self = ((q * k[:, :, -len2:]).sum(-1, keepdim=True)
+                      / np.sqrt(self.dim_head))
+        # score_prev.shape == (batch_size, n_heads, len2, len1)
+        # score_self.shape == (batch_size, n_heads, len2, 1)
+
+        # mask out padding and apply attention weights
+        mask = make_mask(seq1, seq_len1)
+        score_prev.masked_fill_(
+            mask.view(batch_size, 1, 1, len1) == 0, -math.inf
+        )
+        score = torch.cat([score_prev, score_self], -1)
+        weights = F.softmax(score, dim=-1)
+        weights = self.dropout(weights)
+        # weight.shape == (batch_size, n_heads, len2, len1 + 1)
+
+        attention_prev = torch.matmul(weights[:, :, :, :-1], v[:, :, :len1])
+        # attention_prev.shape == (batch_size, n_heads, len2, dim_head)
+        attention_self = weights[:, :, :, -1:] * v[:, :, -len2:, :]
+        # attention_prev.shape == attention_self.shape == (batch_size, n_heads, len2, dim_head)
+
+        attention = attention_prev + attention_self
+
+        # reshape to concat results
+        attention = attention.transpose(1, 2) \
+                             .reshape(batch_size, len2,
+                                      self.n_heads * self.dim_head)
+        output = self.linear_o(attention)
+        return output
 
 
 class PositionalEncoding(nn.Module):
@@ -161,5 +240,39 @@ class LayerNorm(nn.Module):
     def forward(self, x):
         mean = x.mean(-1, keepdim=True)
         std = x.std(-1, keepdim=True)
-        # return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
-        return x
+        return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
+        # return x
+
+
+class Seq2Vec(torch.nn.Module):
+    """ 
+    Args:
+    """
+    def __init__(self, dim_in, dim_out, n_heads, dropout_rate):
+        super(Seq2Vec, self).__init__()
+        self.attention = MultiHeadAttention(dim_in, dim_out, n_heads,
+                                            dropout_rate)
+
+        q = torch.zeros(1, 1, dim_out)
+        torch.nn.init.normal_(q)
+        self.q = torch.nn.Parameter(q)
+
+    def forward(self, seq, seq_len):
+        """
+        Args:
+            seq (FloatTensor)
+            seq_len (list of int)
+        Returns:
+            FloatTensor of shape (batch, dim_out).
+        """
+        mask = make_mask(seq, seq_len)
+        q = torch.cat([self.q] * seq.shape[0], 0)
+        return self.attention(q, seq, mask).squeeze(1)
+
+
+def make_mask(seq, lens):
+    mask = torch.zeros_like(seq[:, :, 0])
+    for i, ll in enumerate(lens):
+        mask[i, :ll] = 1
+
+    return mask
