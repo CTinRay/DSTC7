@@ -37,27 +37,39 @@ class DSTC7Dataset(Dataset):
             data['options'][0] = data['context'][context_end:next_end]
             data['utterance_ends'] = data['utterance_ends'][:context_len]
 
-        if data['options'][0] in data['options'][1:]:
-            ans_index = data['options'][1:].index(data['options'][0]) + 1
-            del data['options'][ans_index]
+        answers = data['options'][:data['n_corrects']]
+        for ans in answers:
+            try:
+                ans_index = data['options'][data['n_corrects']:].index(ans) \
+                    + data['n_corrects']
+                del data['options'][ans_index]
+            except ValueError:
+                pass
+
+        if self.n_negative == self.n_positive == -1:
+            n_positive = data['n_corrects']
+            n_negative = 100 - n_positive
+        else:
+            n_positive = min(data['n_corrects'], self.n_positive)
+            n_negative = min(self.n_negative, len(data['options']) - n_positive)
 
         # sample positive indices
         positive_indices = list(range(data['n_corrects']))
         random.shuffle(positive_indices)
-        positive_indices = positive_indices[:self.n_positive]
+        positive_indices = positive_indices[:n_positive]
 
         # sample negative indices
         negative_indices = list(range(data['n_corrects'],
                                       len(data['options'])))
         random.shuffle(negative_indices)
-        negative_indices = negative_indices[:self.n_negative]
+        negative_indices = negative_indices[:n_negative]
         
         data['options'] = (
             [data['options'][i] for i in positive_indices]
             + [data['options'][i] for i in negative_indices]
         )
 
-        data['labels'] = [1] * self.n_positive + [0] * self.n_negative
+        data['labels'] = [1] * n_positive + [0] * n_negative
 
         return data
 
@@ -86,7 +98,7 @@ class DSTC7Dataset(Dataset):
         )
 
         # build tensor of options
-        batch['option_lens'] = [[len(opt) for opt in data['options']]
+        batch['option_lens'] = [[max(len(opt), 1) for opt in data['options']]
                                 for data in datas]
         batch['options'] = torch.tensor(
             [[pad_to_len(opt, self.option_padded_len, self.padding)
