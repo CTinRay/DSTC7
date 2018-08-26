@@ -49,7 +49,7 @@ class BasePredictor():
                 dataloader = torch.utils.data.DataLoader(
                     self.valid,
                     batch_size=self.batch_size,
-                    shuffle=True,
+                    shuffle=False,
                     collate_fn=collate_fn,
                     num_workers=1)
                 # evaluate model
@@ -84,10 +84,9 @@ class BasePredictor():
 
         ys_ = []
         with torch.no_grad():
-            for batch in dataloader:
-                with torch.no_grad():
-                    batch_y_ = predict_fn(batch).data
-                    ys_.append(batch_y_)
+            for batch in tqdm(dataloader):
+                batch_y_ = predict_fn(batch)
+                ys_.append(batch_y_)
 
         ys_ = torch.cat(ys_, 0)
 
@@ -125,27 +124,30 @@ class BasePredictor():
             description = 'evaluating'
 
         # run batches
-        for i, batch in tqdm(enumerate(dataloader),
-                             total=iter_in_epoch,
-                             desc=description):
+        trange = tqdm(enumerate(dataloader),
+                      total=iter_in_epoch,
+                      desc=description)
+        for i, batch in trange:
             if training and i >= iter_in_epoch:
                 break
 
             if training:
                 output, batch_loss = \
-                  self._run_iter(batch, training)
+                    self._run_iter(batch, training)
                 self.optimizer.zero_grad()
                 batch_loss.backward()
                 self.optimizer.step()
             else:
                 with torch.no_grad():
                     output, batch_loss = \
-                      self._run_iter(batch, training)
+                        self._run_iter(batch, training)
+                    self.optimizer.zero_grad()
 
             # accumulate loss and metric scores
             loss += batch_loss.item()
             for metric in self.metrics:
                 metric.update(output.data, batch)
+            trange.set_postfix(loss=loss / (i + 1))
 
         # calculate averate loss and metrics
         loss /= iter_in_epoch
