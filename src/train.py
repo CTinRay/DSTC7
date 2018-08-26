@@ -7,7 +7,7 @@ import sys
 import traceback
 import json
 from callbacks import ModelCheckpoint, MetricsLogger
-from metrics import Accuracy
+from metrics import Accuracy, F1
 
 
 def main(args):
@@ -51,7 +51,7 @@ def main(args):
         from recurrent_transformer_predictor import RTPredictor
         PredictorClass = RTPredictor
 
-    predictor = PredictorClass(metrics=[Accuracy()],
+    predictor = PredictorClass(metrics=[Accuracy(), F1()],
                                **config['model_parameters'])
 
     if args.load is not None:

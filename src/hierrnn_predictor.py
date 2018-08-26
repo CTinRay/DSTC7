@@ -13,7 +13,7 @@ class HierRNNPredictor(BasePredictor):
     """
 
     def __init__(self, embeddings, dim_hidden,
-                 dropout_rate=0.2, loss='NLLLoss', margin=0,
+                 dropout_rate=0.2, loss='NLLLoss', margin=0, threshold=None,
                  similarity='inner_product', **kwargs):
         super(HierRNNPredictor, self).__init__(**kwargs)
         self.dim_hidden = dim_hidden
@@ -33,7 +33,7 @@ class HierRNNPredictor(BasePredictor):
 
         self.loss = {
             'NLLLoss': NLLLoss(),
-            'RankLoss': RankLoss(margin)
+            'RankLoss': RankLoss(margin, threshold)
         }[loss]
 
     def _run_iter(self, batch, training):
