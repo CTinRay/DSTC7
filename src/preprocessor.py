@@ -1,8 +1,10 @@
 import json
 import logging
 import spacy
+
 from multiprocessing import Pool
-from dataset import DSTC7Dataset
+from tqdm import tqdm
+from dataset import DSTC7Dataset, DSTC7CandidateDataset
 
 
 class Preprocessor:
@@ -104,15 +106,18 @@ class Preprocessor:
 
         # process options
         processed['options'] = []
+        processed['option_ids'] = []
         for option in data['options-for-correct-answers']:
             processed['options'].append(
                 self.sentence_to_indices(option['utterance'].lower())
             )
+            processed['option_ids'].append(option['candidate-id'])
 
-        for option in data['options-for-next']:
+        for option in data.get('options-for-next', []):
             processed['options'].append(
                 self.sentence_to_indices(option['utterance'].lower())
             )
+            processed['option_ids'].append(option['candidate-id'])
 
         processed['n_corrects'] = len(data['options-for-correct-answers'])
 
@@ -130,3 +135,38 @@ class Preprocessor:
             processed['utterance_ends'] = utterance_ends
 
         return processed
+
+
+class CandidatePreprocessor(Preprocessor):
+    def __init__(self, embeddings, **kwargs):
+        super(CandidatePreprocessor, self).__init__(embeddings, **kwargs)
+
+    def get_dataset(self, data_path, **preprocess_args):
+        """ Load data and return Dataset objects for subtask2 candidates.
+
+        Args:
+            data_path (str): Path to the data.
+        """
+        logging.info('loading dataset...')
+        dataset = []
+        with open(data_path) as f:
+            for line in tqdm(f):
+                candidate_id, utterance = line.strip('\n') \
+                                              .split('\t', maxsplit=1)
+                data = {
+                    'candidate_id': candidate_id,
+                    'utterance': utterance
+                }
+                dataset.append(data)
+
+        logging.info('preprocessing data...')
+
+        processed = []
+        for option in tqdm(dataset):
+            data = {}
+            data['candidate_id'] = option['candidate_id']
+            data['utterance'] = self.sentence_to_indices(
+                option['utterance'].lower())
+            processed.append(data)
+
+        return DSTC7CandidateDataset(processed)

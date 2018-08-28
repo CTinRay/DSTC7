@@ -65,7 +65,8 @@ class BasePredictor():
     def predict_dataset(self, data,
                         collate_fn=default_collate,
                         batch_size=None,
-                        predict_fn=None):
+                        predict_fn=None,
+                        options_hidden=None):
         if batch_size is None:
             batch_size = self.batch_size
         if predict_fn is None:
@@ -85,6 +86,8 @@ class BasePredictor():
         ys_ = []
         with torch.no_grad():
             for batch in tqdm(dataloader):
+                if options_hidden is not None:
+                    batch['options_hidden'] = options_hidden
                 batch_y_ = predict_fn(batch)
                 ys_.append(batch_y_)
 

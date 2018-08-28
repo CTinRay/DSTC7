@@ -63,10 +63,15 @@ class DSTC7Dataset(Dataset):
                                       len(data['options'])))
         random.shuffle(negative_indices)
         negative_indices = negative_indices[:n_negative]
-        
+
         data['options'] = (
             [data['options'][i] for i in positive_indices]
             + [data['options'][i] for i in negative_indices]
+        )
+
+        data['option_ids'] = (
+            [data['option_ids'][i] for i in positive_indices]
+            + [data['option_ids'][i] for i in negative_indices]
         )
 
         data['labels'] = [1] * n_positive + [0] * n_negative
@@ -103,6 +108,39 @@ class DSTC7Dataset(Dataset):
         batch['options'] = torch.tensor(
             [[pad_to_len(opt, self.option_padded_len, self.padding)
               for opt in data['options']]
+             for data in datas]
+        )
+        batch['option_ids'] = [data['option_ids'] for data in datas]
+
+        return batch
+
+
+class DSTC7CandidateDataset(Dataset):
+    def __init__(self, data, padding=0,
+                 option_padded_len=50):
+        self.data = data
+        self.option_padded_len = option_padded_len
+        self.padding = padding
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        data = dict(self.data[index])
+        return data
+
+    def collate_fn(self, datas):
+        batch = {}
+
+        # collate lists
+        batch['candidate_id'] = [data['candidate_id'] for data in datas]
+
+        # build tensor of options
+        batch['option_lens'] = [max(len(data['utterance']), 1)
+                                for data in datas]
+        batch['options'] = torch.tensor(
+            [pad_to_len(
+                data['utterance'], self.option_padded_len, self.padding)
              for data in datas]
         )
 

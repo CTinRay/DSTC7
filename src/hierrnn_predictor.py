@@ -58,3 +58,19 @@ class HierRNNPredictor(BasePredictor):
             batch['option_lens'])
         # predicts = logits.max(-1)[1]
         return logits
+
+    def _encode_option_batch(self, batch):
+        options = self.embeddings(batch['options'].to(self.device))
+        encoded = self.model.option_encoder(options, batch['option_lens'])
+        return encoded
+
+    def _predict_batch_option_encoded(self, batch):
+        context = self.embeddings(batch['context'].to(self.device))
+        options_hidden = batch['options_hidden'].to(self.device)
+        size = options_hidden.size()
+        options_hidden = options_hidden.expand(len(context), size[0], size[1])
+        logits = self.model.half_forward(
+            context.to(self.device),
+            batch['utterance_ends'],
+            options_hidden)
+        return logits

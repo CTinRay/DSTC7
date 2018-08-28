@@ -6,7 +6,7 @@ import sys
 import traceback
 import pickle
 import json
-from preprocessor import Preprocessor
+from preprocessor import Preprocessor, CandidatePreprocessor
 
 
 def main(args):
@@ -20,6 +20,17 @@ def main(args):
         pickle.dump(train, f)
 
     valid = preprocessor.get_dataset(args.valid_path, args.n_workers)
+    with open(args.output_valid_path, 'wb') as f:
+        pickle.dump(valid, f)
+
+
+def main_candidate(args):
+
+    with open(args.embeddings_path, 'rb') as f:
+        embeddings = pickle.load(f)
+    preprocessor = CandidatePreprocessor(embeddings)
+
+    valid = preprocessor.get_dataset(args.valid_path)
     with open(args.output_valid_path, 'wb') as f:
         pickle.dump(valid, f)
 
@@ -39,6 +50,8 @@ def _parse_args():
     parser.add_argument('output_valid_path', type=str,
                         help='[output] Path to the valid pickle file.')
     parser.add_argument('--n_workers', type=int, default=16)
+    parser.add_argument('--candidate', action='store_true',
+                        help='process task2 candidates')
     args = parser.parse_args()
     return args
 
@@ -47,7 +60,10 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     args = _parse_args()
     try:
-        main(args)
+        if args.candidate:
+            main_candidate(args)
+        else:
+            main(args)
     except KeyboardInterrupt:
         pass
     except BaseException:

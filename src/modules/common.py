@@ -85,9 +85,21 @@ class HierRNN(torch.nn.Module):
         logits = torch.stack(logits, 1)
         return logits
 
+    def half_forward(self, context, context_ends, options_hidden):
+        context_hidden = self.context_encoder(context, context_ends)
+        predict_option = self.transform(context_hidden)
+        logits = []
+        for option_hidden in options_hidden.transpose(1, 0):
+            # option_hidden.size() == (batch, dim_hidden)
+            # logit.size() == (batch,)
+            logit = self.similarity(predict_option, option_hidden)
+            logits.append(logit)
+        logits = torch.stack(logits, 1)
+        return logits
+
 
 class HierRNNEncoder(torch.nn.Module):
-    """ 
+    """
 
     Args:
 
@@ -114,7 +126,7 @@ class HierRNNEncoder(torch.nn.Module):
 
 
 class BatchInnerProduct(torch.nn.Module):
-    """ 
+    """
 
     Args:
 
@@ -128,7 +140,7 @@ class BatchInnerProduct(torch.nn.Module):
 
 
 class LSTMEncoder(torch.nn.Module):
-    """ 
+    """
 
     Args:
 
@@ -149,7 +161,7 @@ class LSTMEncoder(torch.nn.Module):
 
 
 class RankLoss(torch.nn.Module):
-    """ 
+    """
     Args:
 
     """
@@ -188,7 +200,7 @@ class RankLoss(torch.nn.Module):
 
 
 class NLLLoss(torch.nn.Module):
-    """ 
+    """
     Args:
 
     """
