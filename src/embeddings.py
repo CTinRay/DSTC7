@@ -25,10 +25,10 @@ class Embeddings:
                     self.word_dict[word] = len(self.word_dict)
 
             oov_embeddings = torch.nn.init.uniform_(
-                torch.empty(len(self.word_dict) - self.embedding.size(0),
-                            self.embedding.size(1)))
+                torch.empty(len(self.word_dict) - self.embeddings.size(0),
+                            self.embeddings.size(1)))
 
-            self.embeddings = torch.cat([self.embedding, oov_embeddings], 0)
+            self.embeddings = torch.cat([self.embeddings, oov_embeddings], 0)
 
     def to_index(self, word):
         """
