@@ -1,6 +1,7 @@
 import json
 import logging
 import spacy
+import pdb
 from multiprocessing import Pool
 from dataset import DSTC7Dataset
 
@@ -56,6 +57,7 @@ class Preprocessor:
                 batch = dataset[batch_start: batch_end]
                 results[i] = pool.apply_async(self.preprocess_dataset,
                                               [batch, preprocess_args])
+                # self.preprocess_dataset(batch, preprocess_args)
 
             pool.close()
             pool.join()
@@ -119,6 +121,7 @@ class Preprocessor:
         if cat:
             context = []
             utterance_ends = []
+            assert len(processed['speaker']) == len(processed['context'])
             for speaker, utterance in zip(processed['speaker'], processed['context']):
                 context.append(
                     self.embeddings.to_index('speaker{}'.format(speaker + 1))
@@ -128,5 +131,38 @@ class Preprocessor:
 
             processed['context'] = context
             processed['utterance_ends'] = utterance_ends
+
+            if 'profile' in data:
+                profile = data['profile']['Courses']
+                priors = [
+                    self.embeddings.to_index(
+                        course['offering'].split('-')[0].lower()
+                    )
+                    for course in profile['Prior']
+                ]
+                suggested = [
+                    self.embeddings.to_index(
+                        course['offering'].split('-')[0].lower()
+                    )
+                    for course in profile['Suggested']
+                ]
+                processed['prior'] = [
+                    1 if w in priors else 0
+                    for w in processed['context']
+                ]
+                processed['suggested'] = [
+                    1 if w in suggested else 0
+                    for w in processed['context']
+                ]
+                processed['option_prior'] = [
+                    [1 if w in priors else 0
+                     for w in opt]
+                    for opt in processed['options']
+                ]
+                processed['option_suggested'] = [
+                    [1 if w in suggested else 0
+                     for w in opt]
+                    for opt in processed['options']
+                ]
 
         return processed

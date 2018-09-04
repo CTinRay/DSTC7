@@ -51,7 +51,8 @@ class DSTC7Dataset(Dataset):
             n_negative = 100 - n_positive
         else:
             n_positive = min(data['n_corrects'], self.n_positive)
-            n_negative = min(self.n_negative, len(data['options']) - n_positive)
+            n_negative = min(self.n_negative + self.n_positive - n_positive,
+                             len(data['options']) - n_positive)
 
         # sample positive indices
         positive_indices = list(range(data['n_corrects']))
@@ -67,6 +68,14 @@ class DSTC7Dataset(Dataset):
         data['options'] = (
             [data['options'][i] for i in positive_indices]
             + [data['options'][i] for i in negative_indices]
+        )
+        data['option_suggested'] = (
+            [data['option_suggested'][i] for i in positive_indices]
+            + [data['option_suggested'][i] for i in negative_indices]
+        )
+        data['option_prior'] = (
+            [data['option_prior'][i] for i in positive_indices]
+            + [data['option_prior'][i] for i in negative_indices]
         )
 
         data['labels'] = [1] * n_positive + [0] * n_negative
@@ -105,6 +114,26 @@ class DSTC7Dataset(Dataset):
               for opt in data['options']]
              for data in datas]
         )
+
+        if 'prior' in datas[0]:
+            batch['prior'] = torch.tensor(
+                [pad_to_len(data['prior'], padded_len, self.padding)
+                 for data in datas]
+            ).float()
+            batch['suggested'] = torch.tensor(
+                [pad_to_len(data['suggested'], padded_len, self.padding)
+                 for data in datas]
+            ).float()
+            batch['option_prior'] = torch.tensor(
+                [[pad_to_len(opt, self.option_padded_len, self.padding)
+                  for opt in data['option_prior']]
+                 for data in datas]
+            ).float()
+            batch['option_suggested'] = torch.tensor(
+                [[pad_to_len(opt, self.option_padded_len, self.padding)
+                  for opt in data['option_suggested']]
+                 for data in datas]
+            ).float()
 
         return batch
 

@@ -53,7 +53,7 @@ class HierRNN(torch.nn.Module):
     """
 
     def __init__(self, dim_embeddings, dim_hidden,
-                 similarity='inner_product'):
+                 similarity='inner_product', has_emb=False, vol_size=-1):
         super(HierRNN, self).__init__()
         self.context_encoder = HierRNNEncoder(dim_embeddings,
                                               dim_hidden, dim_hidden)
@@ -70,6 +70,9 @@ class HierRNN(torch.nn.Module):
             'cos': torch.nn.CosineSimilarity(dim=-1, eps=1e-6),
             'inner_product': BatchInnerProduct()
         }[similarity]
+        if has_emb:
+            self.embeddings = torch.nn.Embedding(vol_size,
+                                                 dim_embeddings)
 
     def forward(self, context, context_ends, options, option_lens):
         context_hidden = self.context_encoder(context, context_ends)

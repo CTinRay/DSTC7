@@ -14,7 +14,8 @@ class RecurrentTransformer(torch.nn.Module):
     """
 
     def __init__(self, dim_embeddings, n_heads, dropout_rate, dim_ff,
-                 dim_encoder=102, dim_encoder_ff=256):
+                 dim_encoder=102, dim_encoder_ff=256,
+                 has_emb=False, vol_size=-1):
         super(RecurrentTransformer, self).__init__()
         self.transformer = RecurrentTransformerEncoder(
             dim_embeddings,
@@ -35,6 +36,9 @@ class RecurrentTransformer(torch.nn.Module):
         self.similarity = BatchInnerProduct()
         self.register_buffer('padding', torch.zeros(dim_embeddings))
         self.register_buffer('padding2', torch.zeros(dim_encoder))
+        if has_emb:
+            self.embeddings = torch.nn.Embedding(vol_size,
+                                                 dim_embeddings)
 
     def forward(self, context, context_ends, options, option_lens):
         batch_size = context.size(0)
