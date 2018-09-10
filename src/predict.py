@@ -6,8 +6,9 @@ import pickle
 import sys
 import traceback
 import json
+import torch
 from callbacks import ModelCheckpoint, MetricsLogger
-from metrics import Accuracy
+from metrics import Accuracy, F1
 from dualrnn_predictor import DualRNNPredictor
 from IPython import embed
 
@@ -62,9 +63,15 @@ def main(args):
         config['model_parameters']['valid'],
         config['model_parameters']['valid'].collate_fn)
 
+    labels = torch.tensor(
+        [sample['labels'] for sample in config['model_parameters']['valid']]
+    )
     m = Accuracy()
     m.update(predict, 0)
     print(m.get_score())
+    f1 = F1(config['threshold'], config['max_selected'])
+    f1.update(predict, {'labels': labels})
+    print(f1.get_score())
     embed()
 
 

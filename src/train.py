@@ -51,8 +51,11 @@ def main(args):
         from recurrent_transformer_predictor import RTPredictor
         PredictorClass = RTPredictor
 
-    predictor = PredictorClass(metrics=[Accuracy(), F1()],
-                               **config['model_parameters'])
+    predictor = PredictorClass(
+        metrics=[Accuracy(),
+                 F1(threshold=config['model_parameters']['threshold'],
+                    max_selected=config['f1_max_selected'])],
+        **config['model_parameters'])
 
     if args.load is not None:
         predictor.load(args.load)

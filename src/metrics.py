@@ -60,7 +60,7 @@ class F1(Metrics):
     """
     name = 'Precision, Recall, F1'
 
-    def __init__(self, threshold=0.):
+    def __init__(self, threshold=0., max_selected=None):
         # true positive
         self.tp = 0
 
@@ -68,14 +68,30 @@ class F1(Metrics):
         self.fp, self.fn = 0, 0
 
         self.threshold = threshold
+        self.max_selected = max_selected
+        self.noise = 1e-6
+
+    def reset(self):
+        self.tp = 0
+        self.fp, self.fn = 0, 0
 
     def update(self, predicts, batch):
+        predicts *= (1 + torch.rand_like(predicts) * self.noise)
         predicts = predicts.cpu()
         labels = batch['labels'].byte()
+        assert predicts.shape == labels.shape
 
-        # predicted positive, predicted negative
+        # predicted positive
         pp = predicts.float() > self.threshold
-        pn = predicts.float() <= self.threshold
+
+        # filter not in topk
+        if self.max_selected is not None:
+            topk_mask = \
+                predicts >= predicts.topk(self.max_selected, -1)[0][:, -1:]
+            pp *= topk_mask
+
+        # predicted negative
+        pn = 1 - pp
 
         self.tp += (pp * labels).sum().item()
         self.fp += (pp * (1 - labels)).sum().item()
