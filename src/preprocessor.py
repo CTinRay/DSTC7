@@ -1,6 +1,7 @@
 import json
 import logging
 import spacy
+import pdb
 from multiprocessing import Pool
 from dataset import DSTC7Dataset
 
@@ -49,13 +50,14 @@ class Preprocessor:
             for i in range(n_workers):
                 batch_start = (len(dataset) // n_workers) * i
                 if i == n_workers - 1:
-                    batch_end = len(dataset) - 1
+                    batch_end = len(dataset)
                 else:
                     batch_end = (len(dataset) // n_workers) * (i + 1)
 
                 batch = dataset[batch_start: batch_end]
                 results[i] = pool.apply_async(self.preprocess_dataset,
                                               [batch, preprocess_args])
+                # self.preprocess_dataset(batch, preprocess_args)
 
             pool.close()
             pool.join()
@@ -94,7 +96,7 @@ class Preprocessor:
         processed['speaker'] = []
         for message in data['messages-so-far']:
             processed['context'].append(
-                self.sentence_to_indices(message['utterance'])
+                self.sentence_to_indices(message['utterance'].lower())
             )
             speaker = message['speaker'].replace('student', 'participant_1') \
                                         .replace('advisor', 'participant_2')
@@ -106,12 +108,12 @@ class Preprocessor:
         processed['options'] = []
         for option in data['options-for-correct-answers']:
             processed['options'].append(
-                self.sentence_to_indices(option['utterance'])
+                self.sentence_to_indices(option['utterance'].lower())
             )
 
         for option in data['options-for-next']:
             processed['options'].append(
-                self.sentence_to_indices(option['utterance'])
+                self.sentence_to_indices(option['utterance'].lower())
             )
 
         processed['n_corrects'] = len(data['options-for-correct-answers'])
@@ -119,6 +121,7 @@ class Preprocessor:
         if cat:
             context = []
             utterance_ends = []
+            assert len(processed['speaker']) == len(processed['context'])
             for speaker, utterance in zip(processed['speaker'], processed['context']):
                 context.append(
                     self.embeddings.to_index('speaker{}'.format(speaker + 1))
@@ -128,5 +131,38 @@ class Preprocessor:
 
             processed['context'] = context
             processed['utterance_ends'] = utterance_ends
+
+            if 'profile' in data:
+                profile = data['profile']['Courses']
+                priors = [
+                    self.embeddings.to_index(
+                        course['offering'].split('-')[0].lower()
+                    )
+                    for course in profile['Prior']
+                ]
+                suggested = [
+                    self.embeddings.to_index(
+                        course['offering'].split('-')[0].lower()
+                    )
+                    for course in profile['Suggested']
+                ]
+                processed['prior'] = [
+                    1 if w in priors else 0
+                    for w in processed['context']
+                ]
+                processed['suggested'] = [
+                    1 if w in suggested else 0
+                    for w in processed['context']
+                ]
+                processed['option_prior'] = [
+                    [1 if w in priors else 0
+                     for w in opt]
+                    for opt in processed['options']
+                ]
+                processed['option_suggested'] = [
+                    [1 if w in suggested else 0
+                     for w in opt]
+                    for opt in processed['options']
+                ]
 
         return processed

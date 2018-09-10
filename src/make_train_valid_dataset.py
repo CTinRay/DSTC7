@@ -38,7 +38,7 @@ def _parse_args():
                         help='[output] Path to the training pickle file.')
     parser.add_argument('output_valid_path', type=str,
                         help='[output] Path to the valid pickle file.')
-    parser.add_argument('--n_workers', type=int)
+    parser.add_argument('--n_workers', type=int, default=16)
     args = parser.parse_args()
     return args
 

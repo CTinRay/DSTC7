@@ -49,7 +49,7 @@ class BasePredictor():
                 dataloader = torch.utils.data.DataLoader(
                     self.valid,
                     batch_size=self.batch_size,
-                    shuffle=True,
+                    shuffle=False,
                     collate_fn=collate_fn,
                     num_workers=1)
                 # evaluate model
@@ -69,7 +69,7 @@ class BasePredictor():
         if batch_size is None:
             batch_size = self.batch_size
         if predict_fn is None:
-            predict_fn = self.predict_batch
+            predict_fn = self._predict_batch
 
         # set model to eval mode
         self.model.eval()
@@ -83,9 +83,10 @@ class BasePredictor():
             num_workers=1)
 
         ys_ = []
-        for batch in dataloader:
-            batch_y_ = predict_fn(batch)
-            ys_.append(batch_y_)
+        with torch.no_grad():
+            for batch in tqdm(dataloader):
+                batch_y_ = predict_fn(batch)
+                ys_.append(batch_y_)
 
         ys_ = torch.cat(ys_, 0)
 
@@ -123,24 +124,30 @@ class BasePredictor():
             description = 'evaluating'
 
         # run batches
-        for i, batch in tqdm(enumerate(dataloader),
-                             total=iter_in_epoch,
-                             desc=description):
+        trange = tqdm(enumerate(dataloader),
+                      total=iter_in_epoch,
+                      desc=description)
+        for i, batch in trange:
             if training and i >= iter_in_epoch:
                 break
 
-            output, batch_loss = \
-                self._run_iter(batch, training)
-
             if training:
+                output, batch_loss = \
+                    self._run_iter(batch, training)
                 self.optimizer.zero_grad()
                 batch_loss.backward()
                 self.optimizer.step()
+            else:
+                with torch.no_grad():
+                    output, batch_loss = \
+                        self._run_iter(batch, training)
+                    self.optimizer.zero_grad()
 
             # accumulate loss and metric scores
             loss += batch_loss.item()
             for metric in self.metrics:
                 metric.update(output.data, batch)
+            trange.set_postfix(loss=loss / (i + 1))
 
         # calculate averate loss and metrics
         loss /= iter_in_epoch

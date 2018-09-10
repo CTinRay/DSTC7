@@ -43,6 +43,7 @@ def collect_words(train_path, valid_path, n_workers=16):
 
         for utterance in utterances:
             for word in utterance:
+                word = word.lower()
                 if word not in words:
                     words[word] = 0
                 else:
@@ -117,7 +118,11 @@ def main(args):
     words = collect_words(args.train_path, args.valid_path)
 
     logging.info('Building embeddings...')
-    embeddings = Embeddings(args.embedding_path, list(words.keys()))
+    embeddings = Embeddings(args.embedding_path, list(words.keys()),
+                            not args.keep_oov)
+
+    embeddings.add('speaker1')
+    embeddings.add('speaker2')
 
     logging.info('Saving embedding to {}'.format(args.output))
     with open(args.output, 'wb') as f:
@@ -131,7 +136,7 @@ def main(args):
     oov, cum_sum = oov_statistics(words, embeddings.word_dict)
     logging.info('There are {} OOVS'.format(cum_sum[-1]))
 
-    # embed()
+    embed()
 
 
 def _parse_args():
@@ -151,6 +156,7 @@ def _parse_args():
     parser.add_argument('--words', type=str, default=None,
                         help='If a path is specified, list of words in the'
                              'data will be dumped.')
+    parser.add_argument('--keep_oov', action='store_true', default=False)
     args = parser.parse_args()
     return args
 

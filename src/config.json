@@ -1,14 +1,21 @@
 {
+    "arch": "HierRNN",
     "model_parameters" : {
         "embeddings": "../data/task1/ubuntu_embeddings.pkl",
         "dim_hidden": 128,
         "valid": "../data/task1/ubuntu_valid.pkl",
         "batch_size": 32,
-        "max_epochs": 30
+        "max_epochs": 30,
+        "loss": "NLLLoss",
+        "similarity": "inner_product",
+        "threshold": null
     },
     "train": "../data/task1/ubuntu_train.pkl",
     "train_n_positive": 1,
     "train_n_negative": 9,
     "valid_n_positive": 1,
-    "valid_n_negative": 100
+    "valid_n_negative": 100,
+    "context_padded_len": 400,
+    "option_padded_len": 100,
+    "f1_max_selected": 1
 }

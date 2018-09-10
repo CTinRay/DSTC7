@@ -6,8 +6,11 @@ import pickle
 import sys
 import traceback
 import json
+import torch
 from callbacks import ModelCheckpoint, MetricsLogger
 from metrics import Accuracy, F1
+from dualrnn_predictor import DualRNNPredictor
+from IPython import embed
 
 
 def main(args):
@@ -25,21 +28,15 @@ def main(args):
         config['model_parameters']['valid'] = pickle.load(f)
         config['model_parameters']['valid'].padding = \
             embeddings.to_index('</s>')
-        config['model_parameters']['valid'].n_positive = config['valid_n_positive']
-        config['model_parameters']['valid'].n_negative = config['valid_n_negative']
-        config['model_parameters']['valid'].context_padded_len = config['context_padded_len']
-        config['model_parameters']['valid'].option_padded_len = config['option_padded_len']
+        config['model_parameters']['valid'].n_positive = \
+            config['valid_n_positive']
+        config['model_parameters']['valid'].n_negative = \
+            config['valid_n_negative']
+        config['model_parameters']['valid'].context_padded_len = \
+            config['context_padded_len']
+        config['model_parameters']['valid'].option_padded_len = \
+            config['option_padded_len']
         config['model_parameters']['valid'].min_context_len = 10000
-
-    logging.info('loading train data...')
-    with open(config['train'], 'rb') as f:
-        train = pickle.load(f)
-        train.n_positive = config['train_n_positive']
-        train.n_negative = config['train_n_negative']
-        train.context_padded_len = config['context_padded_len']
-        train.padding = embeddings.to_index('</s>')
-        train.option_padded_len = config['option_padded_len']
-        train.min_context_len = 10000
 
     if config['arch'] == 'DualRNN':
         from dualrnn_predictor import DualRNNPredictor
@@ -51,27 +48,31 @@ def main(args):
         from recurrent_transformer_predictor import RTPredictor
         PredictorClass = RTPredictor
 
-    predictor = PredictorClass(
-        metrics=[Accuracy(),
-                 F1(threshold=config['model_parameters']['threshold'],
-                    max_selected=config['f1_max_selected'])],
-        **config['model_parameters'])
+    predictor = PredictorClass(metrics=[Accuracy()],
+                               **config['model_parameters'])
 
-    if args.load is not None:
-        predictor.load(args.load)
+    model_path = os.path.join(
+        args.model_dir,
+        'model.pkl.{}'.format(args.epoch))
 
-    model_checkpoint = ModelCheckpoint(
-        os.path.join(args.model_dir, 'model.pkl'),
-        'loss', 1, 'all'
+    # model_path = '/tmp/model.pkl'
+    logging.info('loading model from {}'.format(model_path))
+    predictor.load(model_path)
+    logging.info('predicting...')
+    predict = predictor.predict_dataset(
+        config['model_parameters']['valid'],
+        config['model_parameters']['valid'].collate_fn)
+
+    labels = torch.tensor(
+        [sample['labels'] for sample in config['model_parameters']['valid']]
     )
-    metrics_logger = MetricsLogger(
-        os.path.join(args.model_dir, 'log.json')
-    )
-
-    logging.info('start training!')
-    predictor.fit_dataset(train,
-                          train.collate_fn,
-                          [model_checkpoint, metrics_logger])
+    m = Accuracy()
+    m.update(predict, 0)
+    print(m.get_score())
+    f1 = F1(config['threshold'], config['max_selected'])
+    f1.update(predict, {'labels': labels})
+    print(f1.get_score())
+    embed()
 
 
 def _parse_args():
@@ -82,7 +83,7 @@ def _parse_args():
     parser.add_argument('--device', default=None,
                         help='Device used to train. Can be cpu or cuda:0,'
                         ' cuda:1, etc.')
-    parser.add_argument('--load', default=None, type=str)
+    parser.add_argument('--epoch', type=int, default=10)
     args = parser.parse_args()
     return args
 
