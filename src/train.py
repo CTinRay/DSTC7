@@ -53,7 +53,7 @@ def main(args):
 
     predictor = PredictorClass(
         metrics=[Accuracy(),
-                 F1(threshold=config['model_parameters']['threshold'],
+                 F1(threshold=config['f1_threshold'],
                     max_selected=config['f1_max_selected'])],
         **config['model_parameters'])
 
