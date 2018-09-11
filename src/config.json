@@ -17,5 +17,6 @@
     "valid_n_negative": 100,
     "context_padded_len": 400,
     "option_padded_len": 100,
-    "f1_max_selected": 1
+    "f1_max_selected": 1,
+    "f1_threshold": 0.0
 }

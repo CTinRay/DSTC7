@@ -1,3 +1,4 @@
+import math
 import torch
 import pdb
 
@@ -67,7 +68,7 @@ class F1(Metrics):
         # false positive, false negative
         self.fp, self.fn = 0, 0
 
-        self.threshold = threshold
+        self.threshold = threshold if threshold is not None else - math.inf
         self.max_selected = max_selected
         self.noise = 1e-6
 
