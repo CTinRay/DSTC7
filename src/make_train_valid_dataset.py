@@ -5,15 +5,18 @@ import pdb
 import sys
 import traceback
 import pickle
-import json
-from preprocessor import Preprocessor
 
 
 def main(args):
 
     with open(args.embeddings_path, 'rb') as f:
         embeddings = pickle.load(f)
-    preprocessor = Preprocessor(embeddings)
+    if args.candidate_path is not None:
+        from preprocessor import PreprocessorTask2
+        preprocessor = PreprocessorTask2(embeddings, args.candidate_path)
+    else:
+        from preprocessor import Preprocessor
+        preprocessor = Preprocessor(embeddings)
 
     train = preprocessor.get_dataset(args.train_path, args.n_workers)
     with open(args.output_train_path, 'wb') as f:
@@ -39,6 +42,7 @@ def _parse_args():
     parser.add_argument('output_valid_path', type=str,
                         help='[output] Path to the valid pickle file.')
     parser.add_argument('--n_workers', type=int, default=16)
+    parser.add_argument('--candidate_path', type=str, default=None)
     args = parser.parse_args()
     return args
 

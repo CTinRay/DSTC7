@@ -2,15 +2,16 @@ import json
 import logging
 import spacy
 import pdb
+import csv
 from multiprocessing import Pool
-from dataset import DSTC7Dataset
+from dataset import DSTC7Dataset, DSTC7Task2Dataset
 
 
 class Preprocessor:
     """
 
     Args:
-        embedding_path (str): Path to the embedding to use.
+        embedding_path (Embeddings)
     """
     def __init__(self, embeddings):
         self.nlp = spacy.load('en_core_web_sm',
@@ -19,10 +20,10 @@ class Preprocessor:
         self.tokenized_valid = None
         self.embeddings = embeddings
 
-        if 'speaker1' not in embeddings.word_dict:
-            embeddings.add('speaker1')
-        if 'speaker2' not in embeddings.word_dict:
-            embeddings.add('speaker2')
+        # if 'speaker1' not in embeddings.word_dict:
+        #     embeddings.add('speaker1')
+        # if 'speaker2' not in embeddings.word_dict:
+        #     embeddings.add('speaker2')
 
     def tokenize(self, sentence):
         return [token.text
@@ -106,15 +107,19 @@ class Preprocessor:
 
         # process options
         processed['options'] = []
+        processed['option_ids'] = []        
         for option in data['options-for-correct-answers']:
             processed['options'].append(
                 self.sentence_to_indices(option['utterance'].lower())
             )
+            processed['option_ids'].append(option['candidate-id'])
 
-        for option in data['options-for-next']:
-            processed['options'].append(
-                self.sentence_to_indices(option['utterance'].lower())
-            )
+        if 'options-for-next' in data:
+            for option in data['options-for-next']:
+                processed['options'].append(
+                    self.sentence_to_indices(option['utterance'].lower())
+                )
+                processed['option_ids'].append(option['candidate-id'])
 
         processed['n_corrects'] = len(data['options-for-correct-answers'])
 
@@ -166,3 +171,69 @@ class Preprocessor:
                 ]
 
         return processed
+
+
+class PreprocessorTask2(Preprocessor):
+    def __init__(self, embeddings, candidate_path):
+        super(PreprocessorTask2, self).__init__(embeddings)
+        self.candidates = []
+        self.candidate_ids = []
+        self.nlp = spacy.load(
+            'en_core_web_sm',
+            disable=['tagger', 'ner', 'parser', 'textcat'])
+
+        logging.info('Preprocessing candidates...')
+        with open(candidate_path) as f:
+            for line in csv.reader(f, delimiter='\t'):
+                candidate = line[1]
+                candidate = [self.embeddings.to_index(w)
+                             for w in self._tokenize(candidate)]
+                self.candidates.append(candidate)
+                self.candidate_ids.append(line[0])
+
+    def get_dataset(self, data_path, n_workers=16, **preprocess_args):
+        """ Load data and return Dataset objects for training and validating.
+
+        Args:
+            data_path (str): Path to the data.
+            valid_ratio (float): Ratio of the data to used as valid data.
+        """
+        logging.info('loading dataset...')
+        with open(data_path) as f:
+            dataset = json.load(f)
+
+        logging.info('preprocessing data...')
+
+        results = [None] * n_workers
+        with Pool(processes=n_workers) as pool:
+            for i in range(n_workers):
+                batch_start = (len(dataset) // n_workers) * i
+                if i == n_workers - 1:
+                    batch_end = len(dataset)
+                else:
+                    batch_end = (len(dataset) // n_workers) * (i + 1)
+
+                batch = dataset[batch_start: batch_end]
+                results[i] = pool.apply_async(self.preprocess_dataset,
+                                              [batch, preprocess_args])
+                # self.preprocess_dataset(batch, preprocess_args)
+
+            pool.close()
+            pool.join()
+
+        processed = []
+        for result in results:
+            processed += result.get()
+
+        return DSTC7Task2Dataset(self.candidates, processed,
+                                 candidate_ids=self.candidate_ids)
+
+    def preprocess(self, data, cat=True):
+        processed = super(PreprocessorTask2, self).preprocess(data, cat)
+        processed['correct_candidate_index'] = \
+            self.candidate_ids.index(processed['option_ids'][0])
+        return processed
+
+    def _tokenize(self, text):
+        return [token.text
+                for token in self.nlp(text)]

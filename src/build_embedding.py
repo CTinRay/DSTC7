@@ -20,13 +20,13 @@ def collect_words(train_path, valid_path, n_workers=16):
     with open(valid_path) as f:
         valid = json.load(f)
     logging.info('Tokenize words in valid...')
-    valid = tokenize_data_parallel(valid, args.n_workers)
+    valid = tokenize_data_parallel(valid, n_workers)
 
     logging.info('Loading train data...')
     with open(train_path) as f:
         train = json.load(f)
     logging.info('Tokenize words in train...')
-    train = tokenize_data_parallel(train, args.n_workers)
+    train = tokenize_data_parallel(train, n_workers)
 
     logging.info('Building word list...')
     words = {}
@@ -37,8 +37,10 @@ def collect_words(train_path, valid_path, n_workers=16):
              for message in sample['messages-so-far']]
             + [option['utterance']
                for option in sample['options-for-correct-answers']]
-            + [option['utterance']
-               for option in sample['options-for-next']]
+            + ([option['utterance']
+                for option in sample['options-for-next']]
+                if 'options-for-next' in sample else []
+               )
         )
 
         for utterance in utterances:
@@ -46,8 +48,7 @@ def collect_words(train_path, valid_path, n_workers=16):
                 word = word.lower()
                 if word not in words:
                     words[word] = 0
-                else:
-                    words[word] += 1
+                words[word] += 1
 
     return words
 
@@ -91,9 +92,12 @@ def tokenize_data(data):
         for i, message in enumerate(sample['options-for-correct-answers']):
             sample['options-for-correct-answers'][i]['utterance'] = \
                 tokenize(message['utterance'])
-        for i, message in enumerate(sample['options-for-next']):
-            sample['options-for-next'][i]['utterance'] = \
-                tokenize(message['utterance'])
+
+    if 'options-for-next' in data[0]:
+        for sample in data:
+            for i, message in enumerate(sample['options-for-next']):
+                sample['options-for-next'][i]['utterance'] = \
+                    tokenize(message['utterance'])
 
     return data
 
@@ -118,8 +122,7 @@ def main(args):
     words = collect_words(args.train_path, args.valid_path)
 
     logging.info('Building embeddings...')
-    embeddings = Embeddings(args.embedding_path, list(words.keys()),
-                            not args.keep_oov)
+    embeddings = Embeddings(args.embedding_path, list(words.keys()))
 
     embeddings.add('speaker1')
     embeddings.add('speaker2')
@@ -136,7 +139,7 @@ def main(args):
     oov, cum_sum = oov_statistics(words, embeddings.word_dict)
     logging.info('There are {} OOVS'.format(cum_sum[-1]))
 
-    embed()
+    # embed()
 
 
 def _parse_args():
@@ -156,7 +159,6 @@ def _parse_args():
     parser.add_argument('--words', type=str, default=None,
                         help='If a path is specified, list of words in the'
                              'data will be dumped.')
-    parser.add_argument('--keep_oov', action='store_true', default=False)
     args = parser.parse_args()
     return args
 

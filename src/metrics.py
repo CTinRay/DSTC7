@@ -37,6 +37,9 @@ class Accuracy(Metrics):
         """
         # add noise to deal with cases where all predict score are identical
         predicts *= (1 + torch.rand_like(predicts) * self.noise)
+        predicts = predicts.cpu()
+
+        ans_scores = (batch['labels'].float() * predicts).sum(-1)
         self.n += predicts.size(0)
         sorted_predicts = torch.sort(predicts)[0]
         for i, at in enumerate(self.ats):
@@ -46,7 +49,7 @@ class Accuracy(Metrics):
             score_at = sorted_predicts[:, -at]
 
             # assume that the 0th option is answer
-            self.n_correct_ats[i] += (predicts[:, 0] >= score_at).sum().item()
+            self.n_correct_ats[i] += (ans_scores >= score_at).sum().item()
 
     def get_score(self):
         return [n_correct / self.n for n_correct in self.n_correct_ats]
