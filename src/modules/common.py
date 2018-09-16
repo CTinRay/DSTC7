@@ -95,6 +95,7 @@ class HierRNNEncoder(torch.nn.Module):
     Args:
 
     """
+
     def __init__(self, dim_embeddings, dim_hidden1=128, dim_hidden2=128):
         super(HierRNNEncoder, self).__init__()
         self.rnn1 = torch.nn.LSTM(dim_embeddings,
@@ -159,10 +160,9 @@ class RankLoss(torch.nn.Module):
 
     def __init__(self, margin=0.2, threshold=None):
         super(RankLoss, self).__init__()
-        self.margin_ranking_loss = torch.nn.MarginRankingLoss(margin)
-        self.margin = margin
         self.threshold = None
-        self.margin = margin
+        self.margin = margin if threshold is not None else margin / 2
+        self.margin_ranking_loss = torch.nn.MarginRankingLoss(self.margin)
 
     def forward(self, logits, labels):
         positive_mask = (1 - labels).byte()
@@ -175,15 +175,12 @@ class RankLoss(torch.nn.Module):
 
         ones = torch.ones_like(negative_max)
         if self.threshold is None:
-            loss = self.margin_ranking_loss(positive_min,
-                                            negative_max + self.margin,
+            loss = self.margin_ranking_loss(positive_min, negative_max,
                                             ones)
         else:
-            loss = (self.margin_ranking_loss(positive_min,
-                                             self.threshold + self.margin,
+            loss = (self.margin_ranking_loss(positive_min, self.threshold,
                                              ones)
-                    + self.margin_ranking_loss(negative_max,
-                                               self.threshold - self.margin,
+                    + self.margin_ranking_loss(negative_max, self.threshold,
                                                - ones)
                     )
 
@@ -191,7 +188,7 @@ class RankLoss(torch.nn.Module):
 
 
 class NLLLoss(torch.nn.Module):
-    """ 
+    """
     Args:
 
     """
