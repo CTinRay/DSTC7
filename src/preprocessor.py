@@ -104,6 +104,22 @@ class Preprocessor:
                 ['participant_1', 'participant_2'].index(speaker)
             )
 
+        processed['context1'] = []
+        processed['context2'] = []
+        for speaker, utterance in zip(processed['speaker'], processed['context']):
+            processed['context{}'.format(speaker+1)].append(utterance)
+
+        processed['context1_masked'] = []
+        processed['context2_masked'] = []
+        for speaker, utterance in zip(processed['speaker'], processed['context']):
+            other_speaker = (speaker + 1) % 2
+            masked_utterance = [
+                self.embeddings.to_index('<unk>')
+                for _ in range(len(utterance))
+            ]
+            processed['context{}_masked'.format(speaker+1)].append(utterance)
+            processed['context{}_masked'.format(other_speaker+1)].append(masked_utterance)
+
         # process options
         processed['options'] = []
         for option in data['options-for-correct-answers']:
@@ -131,38 +147,77 @@ class Preprocessor:
 
             processed['context'] = context
             processed['utterance_ends'] = utterance_ends
+            
+            for speaker in [0, 1]:
+                context = []
+                utterance_ends = []
+                for utterance in processed['context{}'.format(speaker + 1)]:
+                    context.append(
+                        self.embeddings.to_index('speaker{}'.format(speaker + 1))
+                    )
+                    context += utterance
+                    utterance_ends.append(len(context) - 1)
+                processed['context{}'.format(speaker + 1)] = context
+                processed['utterance_ends{}'.format(speaker + 1)] = utterance_ends
+            
+            for speaker in [0, 1]:
+                context = []
+                utterance_ends = []
+                for utterance in processed['context{}_masked'.format(speaker + 1)]:
+                    context.append(
+                        self.embeddings.to_index('speaker{}'.format(speaker + 1))
+                    )
+                    context += utterance
+                    utterance_ends.append(len(context) - 1)
+                processed['utterance_ends{}_masked'.format(speaker + 1)] = utterance_ends
+                processed['context{}_masked'.format(speaker + 1)] = context
 
-            if 'profile' in data:
-                profile = data['profile']['Courses']
-                priors = [
-                    self.embeddings.to_index(
-                        course['offering'].split('-')[0].lower()
-                    )
-                    for course in profile['Prior']
-                ]
-                suggested = [
-                    self.embeddings.to_index(
-                        course['offering'].split('-')[0].lower()
-                    )
-                    for course in profile['Suggested']
-                ]
-                processed['prior'] = [
-                    1 if w in priors else 0
-                    for w in processed['context']
-                ]
-                processed['suggested'] = [
-                    1 if w in suggested else 0
-                    for w in processed['context']
-                ]
-                processed['option_prior'] = [
-                    [1 if w in priors else 0
-                     for w in opt]
-                    for opt in processed['options']
-                ]
-                processed['option_suggested'] = [
-                    [1 if w in suggested else 0
-                     for w in opt]
-                    for opt in processed['options']
-                ]
+        if 'profile' in data:
+            profile = data['profile']['Courses']
+            priors = [
+                self.embeddings.to_index(
+                    course['offering'].split('-')[0].lower()
+                )
+                for course in profile['Prior']
+            ]
+            suggested = [
+                self.embeddings.to_index(
+                    course['offering'].split('-')[0].lower()
+                )
+                for course in profile['Suggested']
+            ]
+            processed['prior'] = [
+                1 if w in priors else 0
+                for w in processed['context']
+            ]
+            processed['suggested'] = [
+                1 if w in suggested else 0
+                for w in processed['context']
+            ]
+            processed['option_prior'] = [
+                [1 if w in priors else 0
+                 for w in opt]
+                for opt in processed['options']
+            ]
+            processed['option_suggested'] = [
+                [1 if w in suggested else 0
+                 for w in opt]
+                for opt in processed['options']
+            ]
+        else:
+            processed['prior'] = [
+                0 for w in processed['context']
+            ]
+            processed['suggested'] = [
+                0 for w in processed['context']
+            ]
+            processed['option_prior'] = [
+                [0 for w in opt]
+                for opt in processed['options']
+            ]
+            processed['option_suggested'] = [
+                [0 for w in opt]
+                for opt in processed['options']
+            ]
 
         return processed

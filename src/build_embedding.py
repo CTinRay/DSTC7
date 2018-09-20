@@ -131,13 +131,11 @@ def main(args):
     if args.words is not None:
         with open(args.words, 'wb') as f:
             pickle.dump(words, f)
-
+    """
     logging.info('Calculating OOV statics...')
     oov, cum_sum = oov_statistics(words, embeddings.word_dict)
     logging.info('There are {} OOVS'.format(cum_sum[-1]))
-
-    embed()
-
+    """
 
 def _parse_args():
     parser = argparse.ArgumentParser(

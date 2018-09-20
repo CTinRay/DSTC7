@@ -9,7 +9,7 @@ class DSTC7Dataset(Dataset):
                  n_negative=4, n_positive=1,
                  context_padded_len=400, option_padded_len=50,
                  min_context_len=4):
-        self.data = data[1:]
+        self.data = data
         self.n_positive = n_positive
         self.n_negative = n_negative
         self.context_padded_len = context_padded_len
@@ -95,8 +95,57 @@ class DSTC7Dataset(Dataset):
         for end in batch['utterance_ends']:
             if len(end) == 0:
                 end.append(40)
+        
+        for speaker in [1, 2]:
+            batch['utterance_ends{}'.format(speaker)] = [
+                list(filter(lambda e: e < self.context_padded_len,
+                            data['utterance_ends{}'.format(speaker)]))
+                for data in datas]
+            for end in batch['utterance_ends{}'.format(speaker)]:
+                if len(end) == 0:
+                    end.append(40)
+            
+            batch['utterance_ends{}_masked'.format(speaker)] = [
+                list(filter(lambda e: e < self.context_padded_len,
+                            data['utterance_ends{}_masked'.format(speaker)]))
+                for data in datas]
+            for end in batch['utterance_ends{}_masked'.format(speaker)]:
+                if len(end) == 0:
+                    end.append(40)
 
         batch['labels'] = torch.tensor([data['labels'] for data in datas])
+
+        for speaker in [1, 2]:
+            batch['context_lens{}_masked'.format(speaker)] = [
+                len(data['context{}_masked'.format(speaker)]) for data in datas
+            ]
+            padded_len = min(
+                self.context_padded_len, 
+                max(batch['context_lens{}_masked'.format(speaker)])
+            )
+            batch['context{}_masked'.format(speaker)] = torch.tensor(
+                [pad_to_len(
+                    data['context{}_masked'.format(speaker)], 
+                    padded_len, self.padding
+                 )
+                 for data in datas]
+            )
+        
+        for speaker in [1, 2]:
+            batch['context_lens{}'.format(speaker)] = [
+                len(data['context{}'.format(speaker)]) for data in datas
+            ]
+            padded_len = min(
+                self.context_padded_len, 
+                max(batch['context_lens{}'.format(speaker)])
+            )
+            batch['context{}'.format(speaker)] = torch.tensor(
+                [pad_to_len(
+                    data['context{}'.format(speaker)],
+                    padded_len, self.padding
+                 )
+                 for data in datas]
+            )
 
         # build tensor of context
         batch['context_lens'] = [len(data['context']) for data in datas]
