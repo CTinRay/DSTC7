@@ -160,7 +160,7 @@ class RankLoss(torch.nn.Module):
 
     def __init__(self, margin=0.2, threshold=None):
         super(RankLoss, self).__init__()
-        self.threshold = None
+        self.threshold = threshold
         self.margin = margin if threshold is not None else margin / 2
         self.margin_ranking_loss = torch.nn.MarginRankingLoss(self.margin)
 
@@ -176,12 +176,14 @@ class RankLoss(torch.nn.Module):
         ones = torch.ones_like(negative_max)
         if self.threshold is None:
             loss = self.margin_ranking_loss(positive_min, negative_max,
-                                            ones)
+                                            ones.squeeze(-1))
         else:
-            loss = (self.margin_ranking_loss(positive_min, self.threshold,
-                                             ones)
-                    + self.margin_ranking_loss(negative_max, self.threshold,
-                                               - ones)
+            loss = (self.margin_ranking_loss(positive_min,
+                                             self.threshold * ones,
+                                             ones.squeeze(-1))
+                    + self.margin_ranking_loss(negative_max,
+                                               self.threshold * ones,
+                                               - ones.squeeze(-1))
                     )
 
         return loss.mean()
@@ -252,7 +254,10 @@ def pad_seqs(tensors, pad_element):
 
 def lse_max(a, dim=-1):
     max_a = torch.max(a, dim=dim, keepdim=True)[0]
-    lse = torch.log(torch.sum(torch.exp(a - max_a), dim=dim)) + max_a
+    lse = torch.log(
+        torch.sum(torch.exp(a - max_a),
+                  dim=dim, keepdim=True)
+    ) + max_a
     return lse
 
 
