@@ -70,7 +70,7 @@ def main(args):
         for batch in tqdm(candidates):
             cand_encs.append(
                 predictor.model.option_encoder(
-                    predictor.model.embeddings(
+                    predictor.embeddings(
                         batch['options'].to(predictor.device)
                     ),
                     batch['option_lens']
@@ -78,6 +78,9 @@ def main(args):
             )
         cand_encs = torch.cat(cand_encs, 0)
 
+        # with open('../data/task2/ubuntu_train.pkl', 'rb') as f:
+        #     train = pickle.load(f)
+        # train.data = train.data[:5000]
         valid_loader = DataLoader(
             valid, shuffle=False,
             batch_size=config['model_parameters']['batch_size'],
@@ -85,7 +88,7 @@ def main(args):
             )
         for batch in tqdm(valid_loader):
             context_hidden = predictor.model.context_encoder(
-                predictor.model.embeddings(
+                predictor.embeddings(
                     batch['context'].to(predictor.device)
                 ),
                 batch['utterance_ends']
