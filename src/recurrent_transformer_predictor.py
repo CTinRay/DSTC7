@@ -70,6 +70,15 @@ class RTPredictor(BasePredictor):
     def _predict_batch(self, batch):
         context = self.embeddings(batch['context'].to(self.device))
         options = self.embeddings(batch['options'].to(self.device))
+        if self.has_info:
+            prior = batch['prior'].unsqueeze(-1).to(self.device)
+            suggested = batch['suggested'].unsqueeze(-1).to(self.device)
+            context = torch.cat([context] + [prior, suggested] * 3, -1)
+
+            prior = batch['option_prior'].unsqueeze(-1).to(self.device)
+            suggested = batch['option_suggested'].unsqueeze(-1).to(self.device)
+            options = torch.cat([options] + [prior, suggested] * 3, -1)
+
         logits = self.model.forward(
             context.to(self.device),
             batch['utterance_ends'],
