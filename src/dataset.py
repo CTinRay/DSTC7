@@ -62,9 +62,10 @@ class DSTC7Dataset(Dataset):
         # sample negative indices
         negative_indices = list(range(data['n_corrects'],
                                       len(data['options'])))
-        random.shuffle(negative_indices)
+        if data['n_corrects'] > 0:
+            random.shuffle(negative_indices)
         negative_indices = negative_indices[:n_negative]
-        
+
         data['options'] = (
             [data['options'][i] for i in positive_indices]
             + [data['options'][i] for i in negative_indices]
@@ -134,6 +135,9 @@ class DSTC7Dataset(Dataset):
                   for opt in data['option_suggested']]
                  for data in datas]
             ).float()
+
+        if 'option_ids' in datas[0]:
+            batch['option_ids'] = [data['option_ids'] for data in datas]
 
         return batch
 
