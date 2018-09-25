@@ -4,6 +4,8 @@ import sys
 import traceback
 import re
 import json
+
+from multiprocessing import Pool
 from tqdm import tqdm
 
 
@@ -22,13 +24,22 @@ def main(args):
 
     courses = list(set(courses))
 
-    ppprocess(valid, courses)
+    valid = ppprocess(valid, courses)
     with open(args.valid_output, 'w') as f:
         json.dump(valid, f, indent='    ')
 
-    ppprocess(train, courses)
+    result_train = [None] * 20
+    with Pool(20) as pool:
+        for i in range(20):
+            batch = train[i*5000:(i+1)*5000]
+            result_train[i] = pool.apply_async(ppprocess, (batch, courses))
+        pool.close()
+        pool.join()
+    result = []
+    for res in result_train:
+        result += res.get()
     with open(args.train_output, 'w') as f:
-        json.dump(train, f, indent='    ')
+        json.dump(result, f, indent='    ')
 
 
 def ppprocess(dataset, courses):
@@ -75,6 +86,7 @@ def ppprocess(dataset, courses):
                     .lower() \
                     .replace(number, ' ' + course)[1:]
 
+    return dataset
 
 def _parse_args():
     parser = argparse.ArgumentParser(description="")
