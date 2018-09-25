@@ -21,6 +21,8 @@ class MetricsLogger(Callback):
         self.log_dest = log_dest
 
     def on_epoch_end(self, log_train, log_valid, model):
+        log_train['epoch'] = model.epoch
+        log_valid['epoch'] = model.epoch
         self.history['train'].append(log_train)
         self.history['valid'].append(log_valid)
         with open(self.log_dest, 'w') as f:

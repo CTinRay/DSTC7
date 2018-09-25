@@ -55,7 +55,6 @@ def main(args):
         args.model_dir,
         'model.pkl.{}'.format(args.epoch))
 
-    # model_path = '/tmp/model.pkl'
     logging.info('loading model from {}'.format(model_path))
     predictor.load(model_path)
     logging.info('predicting...')
@@ -66,13 +65,7 @@ def main(args):
     labels = torch.tensor(
         [sample['labels'] for sample in config['model_parameters']['valid']]
     )
-    # m = Accuracy()
-    # m.update(predict, 0)
-    # print(m.get_score())
-    # f1 = F1(config['threshold'], config['max_selected'])
-    # f1.update(predict, {'labels': labels})
-    # print(f1.get_score())
-    final = FinalMetrics()
+    final = FinalMetrics(rank_na=config['rank_na'])
     final.update(predict, {'labels': labels})
     print(final.get_score())
     embed()
