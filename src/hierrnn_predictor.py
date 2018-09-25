@@ -119,11 +119,13 @@ class UttHierRNNPredictor(BasePredictor):
         if model_type == 'UttHierRNN':
             self.model = UttHierRNN(dim_embed, dim_hidden,
                                     similarity=similarity, has_emb=fine_tune_emb,
-                                    vol_size=embeddings.size(0))
+                                    vol_size=embeddings.size(0),
+                                    dropout_rate=dropout_rate)
         elif model_type == 'UttBinHierRNN':
             self.model = UttBinHierRNN(dim_embed, dim_hidden,
                                        similarity=similarity, has_emb=fine_tune_emb,
-                                       vol_size=embeddings.size(0))
+                                       vol_size=embeddings.size(0),
+                                       dropout_rate=dropout_rate)
         else:
             print('Model type {} not supported!!!!!'.format(model_type))
             return None
@@ -146,7 +148,8 @@ class UttHierRNNPredictor(BasePredictor):
 
         self.loss = {
             'NLLLoss': NLLLoss(),
-            'RankLoss': RankLoss(margin, threshold)
+            'RankLoss': RankLoss(margin, threshold),
+            'BCELoss': torch.nn.BCEWithLogitsLoss()
         }[loss]
 
     def _run_iter(self, batch, training):
@@ -180,7 +183,7 @@ class UttHierRNNPredictor(BasePredictor):
             batch['utterance_ends'],
             options.to(self.device),
             batch['option_lens'])
-        loss = self.loss(logits, batch['labels'].to(self.device))
+        loss = self.loss(logits, batch['labels'].to(self.device).float())
         return logits, loss
 
     def _predict_batch(self, batch):

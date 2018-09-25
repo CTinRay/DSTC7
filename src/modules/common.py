@@ -99,12 +99,14 @@ class UttHierRNN(torch.nn.Module):
     """
 
     def __init__(self, dim_embeddings, dim_hidden,
-                 similarity='inner_product', has_emb=False, vol_size=-1):
+                 similarity='inner_product', has_emb=False, vol_size=-1,
+                 dropout_rate=0.0):
         super(UttHierRNN, self).__init__()
         self.utterance_encoder = LSTMEncoder(dim_embeddings, dim_hidden)
         self.context_encoder = HierRNNEncoder(dim_embeddings,
                                               dim_hidden, dim_hidden,
                                               self.utterance_encoder.rnn)
+        self.dropout_ctx_encoder = torch.nn.Dropout(p=dropout_rate)
         self.transform = torch.nn.Linear(2 * dim_hidden, 2 * dim_hidden)
         self.similarity = {
             'cos': torch.nn.CosineSimilarity(dim=-1, eps=1e-6),
@@ -116,6 +118,7 @@ class UttHierRNN(torch.nn.Module):
 
     def forward(self, context, context_ends, options, option_lens):
         context_hidden = self.context_encoder(context, context_ends)
+        context_hidden = self.dropout_ctx_encoder(context_hidden)
         predict_option = self.transform(context_hidden)
         logits = []
         for i, option in enumerate(options.transpose(1, 0)):
@@ -137,7 +140,8 @@ class UttBinHierRNN(torch.nn.Module):
     """
 
     def __init__(self, dim_embeddings, dim_hidden,
-                 similarity='inner_product', has_emb=False, vol_size=-1):
+                 similarity='inner_product', has_emb=False, vol_size=-1,
+                 dropout_rate=0.0):
         super(UttBinHierRNN, self).__init__()
         self.utterance_encoder = LSTMEncoder(dim_embeddings, dim_hidden)
         self.context_encoder = HierRNNEncoder(dim_embeddings,
@@ -161,7 +165,8 @@ class UttBinHierRNN(torch.nn.Module):
 
     def forward(self, context, context_ends, options, option_lens):
         context_hidden = self.context_encoder(context, context_ends)
-        predict_option = self.transform(context_hidden)
+        # predict_option = self.transform(context_hidden)
+        predict_option = context_hidden
         logits = []
         for i, option in enumerate(options.transpose(1, 0)):
             # option_hidden.size() == (batch, dim_hidden)
@@ -169,13 +174,15 @@ class UttBinHierRNN(torch.nn.Module):
                                                    [ol[i] for ol in option_lens])
             option_concat = torch.cat([option_hidden, predict_option], -1)
             logit = self.mlp(option_concat)
+
+            #logit = self.mlp(option_hidden + predict_option)
             
             #logit = self.similarity(predict_option, option_hidden)
             logit = torch.reshape(logit, (-1,))
             logits.append(logit)
         
         logits = torch.stack(logits, 1)
-        print(logits.data[0])
+        # print(logits.data[0])
         return logits
 
 
@@ -189,15 +196,13 @@ class RoleHierRNN(torch.nn.Module):
     def __init__(self, dim_embeddings, dim_hidden,
                  similarity='inner_product', has_emb=False, vol_size=-1):
         super(RoleHierRNN, self).__init__()
-        self.utterance1_encoder = LSTMEncoder(dim_embeddings, dim_hidden)
-        self.utterance2_encoder = LSTMEncoder(dim_embeddings, dim_hidden)
+        self.utterance_encoder = LSTMEncoder(dim_embeddings, dim_hidden)
         self.context1_encoder = HierRNNEncoder(dim_embeddings,
                                                dim_hidden, dim_hidden,
-                                               self.utterance1_encoder.rnn)
+                                               self.utterance_encoder.rnn)
         self.context2_encoder = HierRNNEncoder(dim_embeddings,
                                                dim_hidden, dim_hidden,
-                                               self.utterance2_encoder.rnn,
-                                               self.context1_encoder.rnn2)
+                                               self.utterance_encoder.rnn)
         self.transform = torch.nn.Linear(2 * dim_hidden, 2 * dim_hidden)
         self.similarity = {
             'cos': torch.nn.CosineSimilarity(dim=-1, eps=1e-6),
@@ -217,8 +222,8 @@ class RoleHierRNN(torch.nn.Module):
         logits = []
         for i, option in enumerate(options.transpose(1, 0)):
             # option_hidden.size() == (batch, dim_hidden)
-            option_hidden = self.utterance2_encoder(option,
-                                                    [ol[i] for ol in option_lens])
+            option_hidden = self.utterance_encoder(option,
+                                                   [ol[i] for ol in option_lens])
             # logit.size() == (batch,)
             logit = self.similarity(predict_option, option_hidden)
             logits.append(logit)
