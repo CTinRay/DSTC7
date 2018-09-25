@@ -14,13 +14,7 @@ def main(args):
     with open(args.valid) as f:
         valid = json.load(f)
 
-    courses = []
-    for sample in train + valid:
-        courses += [c['offering'].split('-')[0]
-                    for c in (sample['profile']['Courses']['Prior']
-                              + sample['profile']['Courses']['Suggested'])]
-
-    courses = list(set(courses))
+    courses = collect_courses(train + valid)
 
     ppprocess(valid, courses)
     with open(args.valid_output, 'w') as f:
@@ -31,14 +25,28 @@ def main(args):
         json.dump(train, f, indent='    ')
 
 
+def collect_courses(data):
+    courses = []
+    for sample in data:
+        courses += [c['offering'].split('-')[0]
+                    for c in (sample['profile']['Courses']['Prior']
+                              + sample['profile']['Courses']['Suggested'])]
+
+    courses = list(set(courses))
+    return courses
+
+
 def ppprocess(dataset, courses):
-    colleges = [re.sub('([A-Z]*)([0-9]*)', r'\1', c)
+    colleges = [re.sub('([A-Z]+)([0-9]+)', r'\1', c)
                 for c in courses]
-    spaced_courses = [re.sub('([A-Z]*)([0-9]*)', r'\1 \2', c).lower()
+    spaced_courses = [re.sub('([A-Z]+)([0-9]+)', r'\1 \2', c).lower()
                       for c in courses]
-    course_numbers = [re.sub('([A-Z]*)([0-9]*)', r' \2', c)
+    course_numbers = [re.sub('([A-Z]+)([0-9]+)', r' \2', c)
                       for c in courses]
     for sample in tqdm(dataset):
+        if 'options-for-correct-answers' not in sample:
+            sample['options-for-correct-answers'] = []
+
         for msg in (sample['messages-so-far']
                     + sample['options-for-next']
                     + sample['options-for-correct-answers']):
@@ -52,9 +60,9 @@ def ppprocess(dataset, courses):
              for c in (sample['profile']['Courses']['Prior']
                        + sample['profile']['Courses']['Suggested'])]
 
-        sample_numbers = [re.sub('([A-Z]*)([0-9]*)', r' \2', c)
+        sample_numbers = [re.sub('([A-Z]+)([0-9]+)', r' \2', c)
                           for c in sample_courses]
-        sample_colleges = [re.sub('([A-Z]*)([0-9]*)', r'\1', c)
+        sample_colleges = [re.sub('([A-Z]+)([0-9]+)', r'\1', c)
                            for c in sample_courses]
 
         for msg in (sample['options-for-correct-answers']
