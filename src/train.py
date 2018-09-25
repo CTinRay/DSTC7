@@ -7,7 +7,7 @@ import sys
 import traceback
 import json
 from callbacks import ModelCheckpoint, MetricsLogger
-from metrics import Accuracy, F1
+from metrics import FinalMetrics
 
 
 def main(args):
@@ -62,10 +62,9 @@ def main(args):
         PredictorClass = RTPredictor
 
     predictor = PredictorClass(
-        metrics=[Accuracy(),
-                 F1(threshold=config['model_parameters']['threshold'],
-                    max_selected=config['f1_max_selected'])],
-        **config['model_parameters'])
+        metrics=[FinalMetrics(rank_na=config['rank_na'])],
+        **config['model_parameters']
+    )
 
     if args.load is not None:
         predictor.load(args.load)

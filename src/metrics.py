@@ -131,7 +131,9 @@ class MRR(Metrics):
                 batch['labels'],
                 (batch['labels'].sum(-1, keepdim=True) == 0).long()], 1
             ).float()
-            predicts = torch.cat([predicts, torch.zero_like(predicts[:, 0])], 1)
+            predicts = torch.cat(
+                [predicts, torch.zeros_like(predicts[:, :1])], 1
+            )
         else:
             labels = batch['labels'].float()
 
@@ -156,7 +158,7 @@ class Recall(Metrics):
         self.ats = ats
         self.n = 0
         self.n_correct_ats = [0] * len(self.ats)
-        self.name = 'Accuracy@' + ', '.join(map(str, ats))
+        self.name = 'Recall@' + ', '.join(map(str, ats))
         self.noise = 1e-6
         self.rank_na = rank_na
 
@@ -177,7 +179,7 @@ class Recall(Metrics):
                 (batch['labels'].sum(-1, keepdim=True) == 0).long()], 1
             ).float()
             predicts = torch.cat([predicts,
-                                  torch.zero_like(predicts[:, 0])], 1)
+                                  torch.zeros_like(predicts[:, :1])], 1)
         else:
             labels = batch['labels'].float()
 
@@ -189,7 +191,7 @@ class Recall(Metrics):
         mask_predict_ranks = mask * predict_ranks
         for i, at in enumerate(self.ats):
             recall = ((mask_predict_ranks < at).float().sum(-1) /
-                      batch['labels'].float().sum(-1)).sum()
+                      labels.float().sum(-1)).sum()
             self.n_correct_ats[i] += recall.item()
 
     def get_score(self):
