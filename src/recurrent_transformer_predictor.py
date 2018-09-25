@@ -16,14 +16,14 @@ class RTPredictor(BasePredictor):
                  dropout_rate=0.2, dim_ff=512,
                  dim_encoder=102, dim_encoder_ff=256,
                  loss='NLLLoss', margin=0, threshold=None,
-                 fine_tune_emb=False, has_info=False, **kwargs):
+                 fine_tune_emb=False, has_info=False, n_blocks=1, **kwargs):
         super(RTPredictor, self).__init__(**kwargs)
         self.has_info = has_info
         dim_embed = embeddings.size(1) + (6 if has_info else 0)
         self.model = RecurrentTransformer(
             dim_embed, n_heads, dropout_rate, dim_ff,
             dim_encoder, dim_encoder_ff, has_emb=fine_tune_emb,
-            vol_size=embeddings.size(0)
+            vol_size=embeddings.size(0), n_blocks=n_blocks
         )
         if fine_tune_emb:
             self.embeddings = self.model.embeddings
