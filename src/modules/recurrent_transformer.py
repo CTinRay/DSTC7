@@ -15,12 +15,12 @@ class RecurrentTransformer(torch.nn.Module):
 
     def __init__(self, dim_embeddings, n_heads, dropout_rate, dim_ff,
                  dim_encoder=102, dim_encoder_ff=256,
-                 has_emb=False, vol_size=-1):
+                 has_emb=False, vol_size=-1, n_blocks=1):
         super(RecurrentTransformer, self).__init__()
         self.transformer = RecurrentTransformerEncoder(
             dim_embeddings,
             n_heads, dropout_rate, dim_ff,
-            dim_encoder, dim_encoder_ff)
+            dim_encoder, dim_encoder_ff, n_blocks)
         self.last_encoder = TransformerEncoder(
             dim_encoder, dim_encoder, n_heads,
             dropout_rate, dim_encoder_ff
@@ -79,14 +79,15 @@ class RecurrentTransformerEncoder(torch.nn.Module):
     """
     def __init__(self, dim_embeddings,
                  n_heads=6, dropout_rate=0.1, dim_ff=128,
-                 dim_encoder=102, dim_encoder_ff=256):
+                 dim_encoder=102, dim_encoder_ff=256, n_blocks=1):
         super(RecurrentTransformerEncoder, self).__init__()
         self.encoder = TransformerEncoder(
             dim_embeddings,
             dim_encoder,
             n_heads,
             dropout_rate,
-            dim_encoder_ff
+            dim_encoder_ff,
+            n_blocks=n_blocks
         )
         self.connection = Connection(
             dim_encoder,

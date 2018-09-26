@@ -108,10 +108,16 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.positional_encoding = \
             PositionalEncoding(dim_input, dropout_rate, max_pos_distance)
-        self.encoder_blocks = nn.ModuleList([
-            EncoderBlock(dim_input, dim_output, n_heads, dropout_rate, dim_ff)
-            for i in range(n_blocks)
-        ])
+        self.encoder_blocks = nn.ModuleList(
+            [
+                EncoderBlock(dim_input, dim_output,
+                             n_heads, dropout_rate, dim_ff)
+            ] + [
+                EncoderBlock(dim_output, dim_output,
+                             n_heads, dropout_rate, dim_ff)
+                for i in range(n_blocks - 1)
+            ]
+        )
 
     def forward(self, x, lens):
         x = self.positional_encoding(x)
@@ -209,6 +215,7 @@ class Connection(nn.Module):
 
 class PositionalEncoding(nn.Module):
     "Implement the PE function."
+
     def __init__(self, d_model, dropout, max_len=2000):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
@@ -231,6 +238,7 @@ class PositionalEncoding(nn.Module):
 
 class LayerNorm(nn.Module):
     "Construct a layernorm module (See citation for details)."
+
     def __init__(self, features, eps=1e-6):
         super(LayerNorm, self).__init__()
         self.a_2 = nn.Parameter(torch.ones(features))
@@ -248,6 +256,7 @@ class Seq2Vec(torch.nn.Module):
     """ 
     Args:
     """
+
     def __init__(self, dim_in, dim_out, n_heads, dropout_rate):
         super(Seq2Vec, self).__init__()
         self.attention = MultiHeadAttention(dim_in, dim_out, n_heads,

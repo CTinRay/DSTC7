@@ -386,10 +386,9 @@ class RankLoss(torch.nn.Module):
 
     def __init__(self, margin=0.2, threshold=None):
         super(RankLoss, self).__init__()
-        self.margin_ranking_loss = torch.nn.MarginRankingLoss(margin)
-        self.margin = margin
-        self.threshold = None
-        self.margin = margin
+        self.threshold = threshold
+        self.margin = margin if threshold is not None else margin / 2
+        self.margin_ranking_loss = torch.nn.MarginRankingLoss(self.margin)
 
     def forward(self, logits, labels):
         positive_mask = (1 - labels).byte()
@@ -402,23 +401,22 @@ class RankLoss(torch.nn.Module):
 
         ones = torch.ones_like(negative_max)
         if self.threshold is None:
-            loss = self.margin_ranking_loss(positive_min,
-                                            negative_max + self.margin,
-                                            ones)
+            loss = self.margin_ranking_loss(positive_min, negative_max,
+                                            ones.squeeze(-1))
         else:
             loss = (self.margin_ranking_loss(positive_min,
-                                             self.threshold + self.margin,
-                                             ones)
+                                             self.threshold * ones,
+                                             ones.squeeze(-1))
                     + self.margin_ranking_loss(negative_max,
-                                               self.threshold - self.margin,
-                                               - ones)
+                                               self.threshold * ones,
+                                               - ones.squeeze(-1))
                     )
 
         return loss.mean()
 
 
 class NLLLoss(torch.nn.Module):
-    """ 
+    """
     Args:
 
     """
@@ -482,7 +480,10 @@ def pad_seqs(tensors, pad_element):
 
 def lse_max(a, dim=-1):
     max_a = torch.max(a, dim=dim, keepdim=True)[0]
-    lse = torch.log(torch.sum(torch.exp(a - max_a), dim=dim)) + max_a
+    lse = torch.log(
+        torch.sum(torch.exp(a - max_a),
+                  dim=dim, keepdim=True)
+    ) + max_a
     return lse
 
 

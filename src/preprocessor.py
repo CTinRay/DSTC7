@@ -1,7 +1,6 @@
 import json
 import logging
 import spacy
-import pdb
 from multiprocessing import Pool
 from dataset import DSTC7Dataset
 
@@ -122,15 +121,18 @@ class Preprocessor:
 
         # process options
         processed['options'] = []
+        processed['option_ids'] = []
         for option in data['options-for-correct-answers']:
             processed['options'].append(
                 self.sentence_to_indices(option['utterance'].lower())
             )
+            processed['option_ids'].append(option['candidate-id'])
 
         for option in data['options-for-next']:
             processed['options'].append(
                 self.sentence_to_indices(option['utterance'].lower())
             )
+            processed['option_ids'].append(option['candidate-id'])
 
         processed['n_corrects'] = len(data['options-for-correct-answers'])
 
@@ -138,7 +140,8 @@ class Preprocessor:
             context = []
             utterance_ends = []
             assert len(processed['speaker']) == len(processed['context'])
-            for speaker, utterance in zip(processed['speaker'], processed['context']):
+            for speaker, utterance in zip(processed['speaker'],
+                                          processed['context']):
                 context.append(
                     self.embeddings.to_index('speaker{}'.format(speaker + 1))
                 )
