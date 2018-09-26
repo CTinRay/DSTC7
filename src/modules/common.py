@@ -58,7 +58,7 @@ class HierRNN(torch.nn.Module):
         self.context_encoder = HierRNNEncoder(dim_embeddings,
                                               dim_hidden, dim_hidden)
         self.option_encoder = LSTMEncoder(dim_embeddings, dim_hidden)
-        """
+        
         self.mlp = torch.nn.Sequential(
             torch.nn.Linear(4 * dim_hidden, 256),
             torch.nn.ReLU(),
@@ -66,7 +66,7 @@ class HierRNN(torch.nn.Module):
             torch.nn.ReLU(),
             torch.nn.Linear(256, 1)
         )
-        """
+        
         self.transform = torch.nn.Linear(2 * dim_hidden, 2 * dim_hidden)
         self.similarity = {
             'cos': torch.nn.CosineSimilarity(dim=-1, eps=1e-6),
@@ -118,7 +118,7 @@ class UttHierRNN(torch.nn.Module):
 
     def forward(self, context, context_ends, options, option_lens):
         context_hidden = self.context_encoder(context, context_ends)
-        context_hidden = self.dropout_ctx_encoder(context_hidden)
+        # context_hidden = self.dropout_ctx_encoder(context_hidden)
         predict_option = self.transform(context_hidden)
         logits = []
         for i, option in enumerate(options.transpose(1, 0)):
@@ -149,10 +149,9 @@ class UttBinHierRNN(torch.nn.Module):
                                               self.utterance_encoder.rnn)
         self.transform = torch.nn.Linear(2 * dim_hidden, 2 * dim_hidden)
         self.mlp = torch.nn.Sequential(
-            torch.nn.Linear(4 * dim_hidden, 256),
+            torch.nn.Linear(4 * dim_hidden, 32),
             torch.nn.ReLU(),
-            torch.nn.Linear(256, 32),
-            torch.nn.ReLU(),
+            torch.nn.Dropout(p=dropout_rate),
             torch.nn.Linear(32, 1, bias=False)
         )
         self.similarity = {
