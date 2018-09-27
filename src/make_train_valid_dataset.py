@@ -15,11 +15,11 @@ def main(args):
         embeddings = pickle.load(f)
     preprocessor = Preprocessor(embeddings)
 
-    train = preprocessor.get_dataset(args.train_path, args.n_workers, cat=True)
+    train = preprocessor.get_dataset(args.train_path, args.n_workers)
     with open(args.output_train_path, 'wb') as f:
         pickle.dump(train, f)
 
-    valid = preprocessor.get_dataset(args.valid_path, args.n_workers, cat=True)
+    valid = preprocessor.get_dataset(args.valid_path, args.n_workers)
     with open(args.output_valid_path, 'wb') as f:
         pickle.dump(valid, f)
 

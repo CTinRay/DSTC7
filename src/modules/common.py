@@ -169,10 +169,10 @@ class UttBinHierRNN(torch.nn.Module):
                                                    [ol[i] for ol in option_lens])
             option_concat = torch.cat([option_hidden, context_hidden], -1)
             logit = self.mlp(option_concat)
-            
+
             logit = torch.reshape(logit, (-1,))
             logits.append(logit)
-        
+
         logits = torch.stack(logits, 1)
         return logits
 
@@ -183,9 +183,9 @@ class HierRNNEncoder(torch.nn.Module):
     Args:
 
     """
-    def __init__(self, 
-                 dim_embeddings, 
-                 dim_hidden1=128, 
+    def __init__(self,
+                 dim_embeddings,
+                 dim_hidden1=128,
                  dim_hidden2=128,
                  rnn1=None,
                  rnn2=None):
