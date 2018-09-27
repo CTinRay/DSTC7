@@ -51,12 +51,6 @@ def main(args):
         from hierrnn_predictor import UttHierRNNPredictor
         PredictorClass = UttHierRNNPredictor
         config['model_parameters']['model_type'] = config['arch']
-    elif config['arch'] == 'RoleHierRNN':
-        from hierrnn_predictor import RoleHierRNNPredictor
-        PredictorClass = RoleHierRNNPredictor
-    elif config['arch'] == 'RoleEncHierRNN':
-        from hierrnn_predictor import RoleEncHierRNNPredictor
-        PredictorClass = RoleEncHierRNNPredictor
     elif config['arch'] == 'RecurrentTransformer':
         from recurrent_transformer_predictor import RTPredictor
         PredictorClass = RTPredictor
