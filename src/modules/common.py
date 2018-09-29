@@ -89,21 +89,121 @@ class HierRNN(torch.nn.Module):
         return logits
 
 
+class UttHierRNN(torch.nn.Module):
+    """
+
+    Args:
+
+    """
+
+    def __init__(self, dim_embeddings, dim_hidden,
+                 similarity='inner_product', has_emb=False, vol_size=-1,
+                 dropout_rate=0.0):
+        super(UttHierRNN, self).__init__()
+        self.utterance_encoder = LSTMEncoder(dim_embeddings, dim_hidden)
+        self.context_encoder = HierRNNEncoder(dim_embeddings,
+                                              dim_hidden, dim_hidden,
+                                              self.utterance_encoder.rnn)
+        self.dropout_ctx_encoder = torch.nn.Dropout(p=dropout_rate)
+        self.transform = torch.nn.Linear(2 * dim_hidden, 2 * dim_hidden)
+        self.similarity = {
+            'cos': torch.nn.CosineSimilarity(dim=-1, eps=1e-6),
+            'inner_product': BatchInnerProduct()
+        }[similarity]
+        if has_emb:
+            self.embeddings = torch.nn.Embedding(vol_size,
+                                                 dim_embeddings)
+
+    def forward(self, context, context_ends, options, option_lens):
+        context_hidden = self.context_encoder(context, context_ends)
+        context_hidden = self.dropout_ctx_encoder(context_hidden)
+        predict_option = self.transform(context_hidden)
+        logits = []
+        for i, option in enumerate(options.transpose(1, 0)):
+            # option_hidden.size() == (batch, dim_hidden)
+            option_hidden = self.utterance_encoder(option,
+                                                   [ol[i] for ol in option_lens])
+            # logit.size() == (batch,)
+            logit = self.similarity(predict_option, option_hidden)
+            logits.append(logit)
+        logits = torch.stack(logits, 1)
+        return logits
+
+
+class UttBinHierRNN(torch.nn.Module):
+    """
+
+    Args:
+
+    """
+
+    def __init__(self, dim_embeddings, dim_hidden,
+                 similarity='inner_product', has_emb=False, vol_size=-1,
+                 dropout_rate=0.0):
+        super(UttBinHierRNN, self).__init__()
+        self.utterance_encoder = LSTMEncoder(dim_embeddings, dim_hidden)
+        self.context_encoder = HierRNNEncoder(dim_embeddings,
+                                              dim_hidden, dim_hidden,
+                                              self.utterance_encoder.rnn)
+        self.transform = torch.nn.Linear(2 * dim_hidden, 2 * dim_hidden)
+        self.mlp = torch.nn.Sequential(
+            torch.nn.Linear(4 * dim_hidden, 32),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(p=dropout_rate),
+            torch.nn.Linear(32, 1, bias=False)
+        )
+        self.similarity = {
+            'cos': torch.nn.CosineSimilarity(dim=-1, eps=1e-6),
+            'inner_product': BatchInnerProduct()
+        }[similarity]
+        if has_emb:
+            self.embeddings = torch.nn.Embedding(vol_size,
+                                                 dim_embeddings)
+
+    def forward(self, context, context_ends, options, option_lens):
+        context_hidden = self.context_encoder(context, context_ends)
+        logits = []
+        for i, option in enumerate(options.transpose(1, 0)):
+            # option_hidden.size() == (batch, dim_hidden)
+            option_hidden = self.utterance_encoder(option,
+                                                   [ol[i] for ol in option_lens])
+            option_concat = torch.cat([option_hidden, context_hidden], -1)
+            logit = self.mlp(option_concat)
+
+            logit = torch.reshape(logit, (-1,))
+            logits.append(logit)
+
+        logits = torch.stack(logits, 1)
+        return logits
+
+
 class HierRNNEncoder(torch.nn.Module):
     """ 
 
     Args:
 
     """
-
-    def __init__(self, dim_embeddings, dim_hidden1=128, dim_hidden2=128):
+    def __init__(self,
+                 dim_embeddings,
+                 dim_hidden1=128,
+                 dim_hidden2=128,
+                 rnn1=None,
+                 rnn2=None):
         super(HierRNNEncoder, self).__init__()
-        self.rnn1 = torch.nn.LSTM(dim_embeddings,
-                                  dim_hidden1,
-                                  1,
-                                  bidirectional=True,
-                                  batch_first=True)
-        self.rnn2 = LSTMEncoder(2 * dim_hidden1, dim_hidden2)
+
+        if rnn1 is not None:
+            self.rnn1 = rnn1
+        else:
+            self.rnn1 = torch.nn.LSTM(dim_embeddings,
+                                      dim_hidden1,
+                                      1,
+                                      bidirectional=True,
+                                      batch_first=True)
+        if rnn2 is not None:
+            self.rnn2 = rnn2
+        else:
+            self.rnn2 = LSTMEncoder(2 * dim_hidden1, dim_hidden2)
+
         self.register_buffer('padding', torch.zeros(2 * dim_hidden2))
 
     def forward(self, seq, ends):
@@ -146,7 +246,7 @@ class LSTMEncoder(torch.nn.Module):
                                  bidirectional=True,
                                  batch_first=True)
 
-    def forward(self, seqs, seq_lens):
+    def forward(self, seqs, seq_lens=None):
         _, hidden = self.rnn(seqs)
         _, c = hidden
         return c.transpose(1, 0).contiguous().view(c.size(1), -1)
