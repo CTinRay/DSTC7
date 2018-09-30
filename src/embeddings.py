@@ -16,19 +16,9 @@ class Embeddings:
     """
 
     def __init__(self, embedding_path, words=None, oov_as_unk=True):
-        self._load_embeddings(embedding_path, set(words))
-
-        if words is not None and not oov_as_unk:
-            # initialize word vector for OOV
-            for word in words:
-                if word not in self.word_dict:
-                    self.word_dict[word] = len(self.word_dict)
-
-            oov_embeddings = torch.nn.init.uniform_(
-                torch.empty(len(self.word_dict) - self.embeddings.size(0),
-                            self.embeddings.size(1)))
-
-            self.embeddings = torch.cat([self.embeddings, oov_embeddings], 0)
+        self.word_dict = {}
+        self.embeddings = None
+        self.extend(embedding_path, words, oov_as_unk)
 
     def to_index(self, word):
         """
@@ -58,8 +48,22 @@ class Embeddings:
         self.embeddings = torch.cat([self.embeddings, vector], 0)
         self.word_dict[word] = len(self.word_dict)
 
+    def extend(self, embeddings_path, words, oov_as_unk=True):
+        self._load_embeddings(embeddings_path, set(words))
+
+        if words is not None and not oov_as_unk:
+            # initialize word vector for OOV
+            for word in words:
+                if word not in self.word_dict:
+                    self.word_dict[word] = len(self.word_dict)
+
+            oov_embeddings = torch.nn.init.uniform_(
+                torch.empty(len(self.word_dict) - self.embeddings.size(0),
+                            self.embeddings.size(1)))
+
+            self.embeddings = torch.cat([self.embeddings, oov_embeddings], 0)
+
     def _load_embeddings(self, embedding_path, words):
-        word_dict = {}
         embedding = []
 
         with open(embedding_path) as fp:
@@ -78,17 +82,20 @@ class Embeddings:
                 # skip word not in words if words are provided
                 if words is not None and word not in words:
                     continue
-                else:
-                    word_dict[word] = len(word_dict)
+                elif word not in self.word_dict:
+                    self.word_dict[word] = len(self.word_dict)
                     embedding.append([float(v) for v in cols[1:]])
 
-            if '</s>' not in word_dict:
-                word_dict['</s>'] = len(word_dict)
+            if '</s>' not in self.word_dict:
+                self.word_dict['</s>'] = len(self.word_dict)
                 embedding.append([0] * len(embedding[0]))
 
-            if '<unk>' not in word_dict:
-                word_dict['<unk>'] = len(word_dict)
+            if '<unk>' not in self.word_dict:
+                self.word_dict['<unk>'] = len(self.word_dict)
                 embedding.append([0] * len(embedding[0]))
 
-        self.word_dict = word_dict
-        self.embeddings = torch.tensor(embedding)
+        embeddings = torch.tensor(embedding)
+        if self.embeddings is not None:
+            self.embeddings = torch.cat([self.embeddings, embeddings], dim=0)
+        else:
+            self.embeddings = embeddings

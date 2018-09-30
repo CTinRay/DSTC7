@@ -7,7 +7,7 @@ import sys
 import traceback
 import json
 from callbacks import ModelCheckpoint, MetricsLogger
-from metrics import Accuracy, F1
+from metrics import FinalMetrics
 
 
 def main(args):
@@ -47,15 +47,18 @@ def main(args):
     elif config['arch'] == 'HierRNN':
         from hierrnn_predictor import HierRNNPredictor
         PredictorClass = HierRNNPredictor
+    elif config['arch'] == 'UttHierRNN' or config['arch'] == 'UttBinHierRNN':
+        from hierrnn_predictor import UttHierRNNPredictor
+        PredictorClass = UttHierRNNPredictor
+        config['model_parameters']['model_type'] = config['arch']
     elif config['arch'] == 'RecurrentTransformer':
         from recurrent_transformer_predictor import RTPredictor
         PredictorClass = RTPredictor
 
     predictor = PredictorClass(
-        metrics=[Accuracy(),
-                 F1(threshold=config['f1_threshold'],
-                    max_selected=config['f1_max_selected'])],
-        **config['model_parameters'])
+        metrics=[FinalMetrics(rank_na=config['rank_na'])],
+        **config['model_parameters']
+    )
 
     if args.load is not None:
         predictor.load(args.load)

@@ -16,14 +16,14 @@ class RTPredictor(BasePredictor):
                  dropout_rate=0.2, dim_ff=512,
                  dim_encoder=102, dim_encoder_ff=256,
                  loss='NLLLoss', margin=0, threshold=None,
-                 fine_tune_emb=False, has_info=False, **kwargs):
+                 fine_tune_emb=False, has_info=False, n_blocks=1, **kwargs):
         super(RTPredictor, self).__init__(**kwargs)
         self.has_info = has_info
         dim_embed = embeddings.size(1) + (6 if has_info else 0)
         self.model = RecurrentTransformer(
             dim_embed, n_heads, dropout_rate, dim_ff,
             dim_encoder, dim_encoder_ff, has_emb=fine_tune_emb,
-            vol_size=embeddings.size(0)
+            vol_size=embeddings.size(0), n_blocks=n_blocks
         )
         if fine_tune_emb:
             self.embeddings = self.model.embeddings
@@ -51,34 +51,13 @@ class RTPredictor(BasePredictor):
             context = self.embeddings(batch['context'].to(self.device))
             options = self.embeddings(batch['options'].to(self.device))
             if self.has_info:
-                context = torch.cat([context,
-                                     batch['prior'].unsqueeze(-1)
-                                                   .to(self.device),
-                                     batch['suggested'].unsqueeze(-1)
-                                                       .to(self.device),
-                                     batch['prior'].unsqueeze(-1)
-                                                   .to(self.device),
-                                     batch['suggested'].unsqueeze(-1)
-                                                       .to(self.device),
-                                     batch['prior'].unsqueeze(-1)
-                                                   .to(self.device),
-                                     batch['suggested'].unsqueeze(-1)
-                                                       .to(self.device),
-                                     ], -1)
-                options = torch.cat([options,
-                                     batch['option_prior'].unsqueeze(-1)
-                                                          .to(self.device),
-                                     batch['option_suggested'].unsqueeze(-1)
-                                                              .to(self.device),
-                                     batch['option_prior'].unsqueeze(-1)
-                                                          .to(self.device),
-                                     batch['option_suggested'].unsqueeze(-1)
-                                                              .to(self.device),
-                                     batch['option_prior'].unsqueeze(-1)
-                                                          .to(self.device),
-                                     batch['option_suggested'].unsqueeze(-1)
-                                                              .to(self.device),
-                                     ], -1)
+                prior = batch['prior'].unsqueeze(-1).to(self.device)
+                suggested = batch['suggested'].unsqueeze(-1).to(self.device)
+                context = torch.cat([context] + [prior, suggested] * 3, -1)
+
+                prior = batch['option_prior'].unsqueeze(-1).to(self.device)
+                suggested = batch['option_suggested'].unsqueeze(-1).to(self.device)
+                options = torch.cat([options] + [prior, suggested] * 3, -1)
 
         logits = self.model.forward(
             context.to(self.device),
@@ -91,6 +70,15 @@ class RTPredictor(BasePredictor):
     def _predict_batch(self, batch):
         context = self.embeddings(batch['context'].to(self.device))
         options = self.embeddings(batch['options'].to(self.device))
+        if self.has_info:
+            prior = batch['prior'].unsqueeze(-1).to(self.device)
+            suggested = batch['suggested'].unsqueeze(-1).to(self.device)
+            context = torch.cat([context] + [prior, suggested] * 3, -1)
+
+            prior = batch['option_prior'].unsqueeze(-1).to(self.device)
+            suggested = batch['option_suggested'].unsqueeze(-1).to(self.device)
+            options = torch.cat([options] + [prior, suggested] * 3, -1)
+
         logits = self.model.forward(
             context.to(self.device),
             batch['utterance_ends'],
