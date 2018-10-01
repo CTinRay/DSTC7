@@ -24,15 +24,15 @@ def main(args):
         embeddings = pickle.load(f)
         config['model_parameters']['embeddings'] = embeddings.embeddings
 
-    logging.info('loading dev data...')
-    with open(config['model_parameters']['valid'], 'rb') as f:
-        valid = pickle.load(f)
-        valid.padding = embeddings.to_index('</s>')
-        valid.n_positive = config['valid_n_positive']
-        valid.n_negative = 0
-        valid.context_padded_len = config['context_padded_len']
-        valid.option_padded_len = config['option_padded_len']
-        valid.min_context_len = 10000
+    logging.info('loading train data...')
+    with open(config['train'], 'rb') as f:
+        train = pickle.load(f)
+        train.padding = embeddings.to_index('</s>')
+        train.n_positive = config['valid_n_positive']
+        train.n_negative = 0
+        train.context_padded_len = config['context_padded_len']
+        train.option_padded_len = config['option_padded_len']
+        train.min_context_len = 10000
 
     if config['arch'] == 'DualRNN':
         from dualrnn_predictor import DualRNNPredictor
@@ -57,8 +57,8 @@ def main(args):
     candidates = DSTC7CandidateDataset(
         [{'utterance': utt,
           'option_ids': oid}
-         for utt, oid in zip(valid.candidates, valid.candidate_ids)],
-        valid.padding)
+         for utt, oid in zip(train.candidates, train.candidate_ids)],
+        train.padding)
 
     candidates = DataLoader(
         candidates, shuffle=False,
@@ -82,15 +82,13 @@ def main(args):
             )
         cand_encs = torch.cat(cand_encs, 0)
 
-        # with open('../data/task2/ubuntu_train.pkl', 'rb') as f:
-        #     train = pickle.load(f)
-        # train.data = train.data[:5000]
-        valid_loader = DataLoader(
-            valid, shuffle=False,
-            batch_size=config['model_parameters']['batch_size'],
-            collate_fn=valid.collate_fn
+        batch_size = config['model_parameters']['batch_size']
+        train_loader = DataLoader(
+            train, shuffle=False,
+            batch_size=batch_size,
+            collate_fn=train.collate_fn
             )
-        for batch in tqdm(valid_loader):
+        for b, batch in enumerate(tqdm(train_loader)):
             context_hidden = predictor.model.utterance_encoder(
                 predictor.embeddings(
                     batch['context'].to(predictor.device)
@@ -100,24 +98,22 @@ def main(args):
             predict_option = predictor.model.transform(context_hidden)
             # pdb.set_trace()
             opt_scores = predictor.model.similarity(
-                predict_option.unsqueeze(1), # (b, 1
-                cand_encs.unsqueeze(0)) # (1, n_c
-            predicts.append(opt_scores)
-            labels += batch['correct_candidate_index']
+                predict_option.unsqueeze(1),
+                cand_encs.unsqueeze(0))
+            _, order = opt_scores.sort(-1)
+            order = order[:, -200:].tolist()
+            for i in range(len(order)):
+                train.rand_indices[i + b * batch_size] = order[i]
 
-        # pdb.set_trace()
-        predicts = torch.cat(predicts, 0)
-        one_hot_labels = torch.zeros(len(labels), len(valid.candidates))
-        one_hot_labels[list(range(len(labels))), labels] = 1
-        accuracy = Accuracy()
-        accuracy.update(predicts.cpu(), {'labels': one_hot_labels})
-        print('{} = {}'.format(accuracy.name, accuracy.get_score()))
-        embed()
+    with open(args.output, 'wb') as f:
+        pickle.dump(train, f)
 
 
 def _parse_args():
-    parser = argparse.ArgumentParser(description="Evaluate task2")
+    parser = argparse.ArgumentParser(description="Update indices")
     parser.add_argument('model_dir', type=str,
+                        help='')
+    parser.add_argument('output', type=str,
                         help='')
     parser.add_argument('--epoch', type=int, default=10)
     args = parser.parse_args()
