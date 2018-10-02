@@ -107,7 +107,8 @@ class UttHierRNNPredictor(BasePredictor):
     def __init__(self, embeddings, dim_hidden,
                  dropout_rate=0.2, loss='NLLLoss', margin=0, threshold=None,
                  similarity='inner_product', fine_tune_emb=False,
-                 has_info=False, model_type='UttHierRNN', **kwargs):
+                 has_info=False, model_type='UttHierRNN',
+                 utt_enc_type='rnn', use_co_att=False, **kwargs):
         super(UttHierRNNPredictor, self).__init__(**kwargs)
         self.dim_hidden = dim_hidden
         self.has_info = has_info
@@ -120,12 +121,15 @@ class UttHierRNNPredictor(BasePredictor):
             self.model = UttHierRNN(dim_embed, dim_hidden,
                                     similarity=similarity, has_emb=fine_tune_emb,
                                     vol_size=embeddings.size(0),
-                                    dropout_rate=dropout_rate)
+                                    dropout_rate=dropout_rate,
+                                    utt_enc_type=utt_enc_type)
         elif model_type == 'UttBinHierRNN':
             self.model = UttBinHierRNN(dim_embed, dim_hidden,
                                        similarity=similarity, has_emb=fine_tune_emb,
                                        vol_size=embeddings.size(0),
-                                       dropout_rate=dropout_rate)
+                                       dropout_rate=dropout_rate,
+                                       utt_enc_type=utt_enc_type,
+                                       use_co_att=use_co_att)
         else:
             print('Model type {} not supported!!!!!'.format(model_type))
             return None
