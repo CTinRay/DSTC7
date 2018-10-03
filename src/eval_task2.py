@@ -82,30 +82,25 @@ def main(args):
             )
         cand_encs = torch.cat(cand_encs, 0)
 
-        # with open('../data/task2/ubuntu_train.pkl', 'rb') as f:
-        #     train = pickle.load(f)
-        # train.data = train.data[:5000]
         valid_loader = DataLoader(
             valid, shuffle=False,
             batch_size=config['model_parameters']['batch_size'],
             collate_fn=valid.collate_fn
             )
         for batch in tqdm(valid_loader):
-            context_hidden = predictor.model.utterance_encoder(
+            context_hidden = predictor.model.context_encoder(
                 predictor.embeddings(
                     batch['context'].to(predictor.device)
                 ),
                 batch['utterance_ends']
             )
             predict_option = predictor.model.transform(context_hidden)
-            # pdb.set_trace()
             opt_scores = predictor.model.similarity(
                 predict_option.unsqueeze(1), # (b, 1
                 cand_encs.unsqueeze(0)) # (1, n_c
             predicts.append(opt_scores)
             labels += batch['correct_candidate_index']
 
-        # pdb.set_trace()
         predicts = torch.cat(predicts, 0)
         one_hot_labels = torch.zeros(len(labels), len(valid.candidates))
         one_hot_labels[list(range(len(labels))), labels] = 1

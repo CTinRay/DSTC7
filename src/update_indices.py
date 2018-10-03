@@ -88,22 +88,25 @@ def main(args):
             batch_size=batch_size,
             collate_fn=train.collate_fn
             )
+        train.scores = []
         for b, batch in enumerate(tqdm(train_loader)):
-            context_hidden = predictor.model.utterance_encoder(
+            context_hidden = predictor.model.context_encoder(
                 predictor.embeddings(
                     batch['context'].to(predictor.device)
                 ),
                 batch['utterance_ends']
             )
             predict_option = predictor.model.transform(context_hidden)
-            # pdb.set_trace()
             opt_scores = predictor.model.similarity(
                 predict_option.unsqueeze(1),
                 cand_encs.unsqueeze(0))
-            _, order = opt_scores.sort(-1)
+
+            score, order = opt_scores.sort(-1)
             order = order[:, -200:].tolist()
+            score = score[:, -200:].tolist()
             for i in range(len(order)):
-                train.rand_indices[i + b * batch_size] = order[i]
+                train.rand_indices[i + b * batch_size] = order[i][::-1]
+                train.scores += score
 
     with open(args.output, 'wb') as f:
         pickle.dump(train, f)
