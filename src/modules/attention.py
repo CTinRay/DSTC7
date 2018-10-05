@@ -13,19 +13,21 @@ class CoAttention(nn.Module):
 
         if pooling.lower() not in ['mean', 'max', 'align']:
             raise ValueError("Pooling type {} not supported".format(pooling))
-        self.pooling = pooling
+        self.pooling = pooling.lower()
 
-        self.M = nn.Linear(self.dim_e, self.dim_e)
+        
+        # self.M = nn.Linear(self.dim_e, self.dim_e)
         self.fcc = nn.Sequential(nn.Linear(2 * dim_embeddings, 1), nn.ReLU())
         self.fcm = nn.Sequential(nn.Linear(dim_embeddings, 1), nn.ReLU())
         self.fcs = nn.Sequential(nn.Linear(dim_embeddings, 1), nn.ReLU())
-
+        
     def forward(self, query, query_lens, option, option_lens):
         # print('query.size', query.size())
         # print('option.size', option.size())
         # query.size() = (batch_size, query_len, dim_e)
         # option.size() = (batch_size, option_len, dim_e)
-        affinity = torch.matmul(self.M(query), option.transpose(1, 2))
+        # affinity = torch.matmul(self.M(query), option.transpose(1, 2))
+        affinity = torch.matmul(query, option.transpose(1, 2))
         # print('affinity.size', affinity.size())
         # affinity.size() = (batch_size, query_len, option_len)
         mask_query = make_mask(query, query_lens)
@@ -90,6 +92,41 @@ class CoAttentionEncoder(nn.Module):
         new_option = torch.cat([option, att_o_max, att_o_mean, att_o_align], -1)
 
         return new_query, new_option
+
+
+class IntraAttention(nn.Module):
+    def __init__(self, dim_embeddings):
+        super(IntraAttention, self).__init__()
+        
+        self.dim_e = dim_embeddings
+
+        self.fcc = nn.Sequential(nn.Linear(2 * dim_embeddings, 1), nn.ReLU())
+        self.fcm = nn.Sequential(nn.Linear(dim_embeddings, 1), nn.ReLU())
+        self.fcs = nn.Sequential(nn.Linear(dim_embeddings, 1), nn.ReLU())
+        
+    def forward(self, query, query_lens):
+        # print('query.size', query.size())
+        # query.size() = (batch_size, query_len, dim_e)
+        # affinity = torch.matmul(self.M(query), option.transpose(1, 2))
+        affinity = torch.matmul(query, query.transpose(1, 2))
+        # print('affinity.size', affinity.size())
+        # affinity.size() = (batch_size, query_len, query_len)
+        mask_query = make_mask(query, query_lens)
+        # mask_query.size() = (batch_size, query_len)
+
+        masked_affinity_query = affinity.masked_fill(
+            mask_query.unsqueeze(2) == 0, -math.inf)
+
+        query_weights = F.softmax(masked_affinity_query, dim=2)
+        summary_query = torch.matmul(query_weights.transpose(1, 2),
+                                      query)
+
+        # print('summary_query.size', summary_query.size())
+        query_c = self.fcc(torch.cat([summary_query, query], -1))
+        query_m = self.fcm(summary_query * query)
+        query_s = self.fcs(summary_query - query)
+
+        return torch.cat([query_c, query_m, query_s], -1)
 
 
 def make_mask(seq, lens):

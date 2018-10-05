@@ -1,6 +1,7 @@
 import torch
 from base_predictor import BasePredictor
 from modules import HierRNN, UttHierRNN, UttBinHierRNN, NLLLoss, RankLoss
+from modules.mcan import MCAN
 
 
 class HierRNNPredictor(BasePredictor):
@@ -108,7 +109,8 @@ class UttHierRNNPredictor(BasePredictor):
                  dropout_rate=0.2, loss='NLLLoss', margin=0, threshold=None,
                  similarity='inner_product', fine_tune_emb=False,
                  has_info=False, model_type='UttHierRNN',
-                 utt_enc_type='rnn', use_co_att=False, **kwargs):
+                 utt_enc_type='rnn', use_co_att=False, use_intra_att=False,
+                 only_last_context=False, **kwargs):
         super(UttHierRNNPredictor, self).__init__(**kwargs)
         self.dim_hidden = dim_hidden
         self.has_info = has_info
@@ -129,7 +131,18 @@ class UttHierRNNPredictor(BasePredictor):
                                        vol_size=embeddings.size(0),
                                        dropout_rate=dropout_rate,
                                        utt_enc_type=utt_enc_type,
-                                       use_co_att=use_co_att)
+                                       use_co_att=use_co_att,
+                                       use_intra_att=use_intra_att,
+                                       only_last_context=only_last_context)
+        elif model_type == 'MCAN':
+            self.model = MCAN(dim_embed, dim_hidden,
+                              similarity=similarity, has_emb=fine_tune_emb,
+                              vol_size=embeddings.size(0),
+                              dropout_rate=dropout_rate,
+                              utt_enc_type=utt_enc_type,
+                              use_co_att=use_co_att,
+                              use_intra_att=use_intra_att,
+                              only_last_context=only_last_context)
         else:
             print('Model type {} not supported!!!!!'.format(model_type))
             return None

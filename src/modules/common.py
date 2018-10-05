@@ -3,7 +3,7 @@ import torch
 import pdb
 # from .transformer import EncoderLayer as TransformerEncoder
 from .transformer2 import Encoder as TransformerEncoder
-from .attention import CoAttentionEncoder
+from .attention import CoAttentionEncoder, IntraAttention
 
 
 class DualRNN(torch.nn.Module):
@@ -157,7 +157,8 @@ class UttBinHierRNN(torch.nn.Module):
     def __init__(self, dim_embeddings, dim_hidden,
                  similarity='inner_product', has_emb=False, vol_size=-1,
                  dropout_rate=0.0, utt_enc_type='rnn',
-                 use_co_att=False):
+                 use_co_att=False, use_intra_att=False,
+                 only_last_context=False):
         super(UttBinHierRNN, self).__init__()
         """
         self.utterance_encoder = LSTMEncoder(dim_embeddings, dim_hidden)
@@ -165,18 +166,37 @@ class UttBinHierRNN(torch.nn.Module):
                                               dim_hidden, dim_hidden,
                                               self.utterance_encoder.rnn)
         """
+        self.dim_embeddings = self.dim_features = dim_embeddings
+
+        self.use_intra_att = use_intra_att
+        if use_intra_att:
+            self.intra_att_context = IntraAttention(dim_embeddings)
+            self.intra_att_option = IntraAttention(dim_embeddings)
+            self.dim_features += 3
+
         self.use_co_att = use_co_att
         if use_co_att:
             self.co_att_encoder = CoAttentionEncoder(dim_embeddings)
-            dim_embeddings = dim_embeddings + 9
+            self.dim_features += 9
 
-        self.context_encoder = HierRNNEncoder(dim_embeddings,
-                                              dim_hidden, dim_hidden,
-                                              utt_enc_type=utt_enc_type)
-        self.utterance_encoder = self.context_encoder.utt_enc
+        self.only_last_context = only_last_context
+        if not only_last_context:
+            self.context_encoder = HierRNNEncoder(self.dim_features,
+                                                  dim_hidden, dim_hidden,
+                                                  utt_enc_type=utt_enc_type)
+            self.utterance_encoder = self.context_encoder.utt_enc
+        else:
+            if utt_enc_type == 'rnn':
+                self.utterance_encoder = LSTMEncoder(self.dim_features,
+                                                     dim_hidden)
+            else:
+                self.utterance_encoder = Conv1dEncoder(
+                    dim_embeddings,
+                    dim_hidden // 2,
+                    kernel_sizes=[2, 3, 4, 5])
 
         self.mlp = torch.nn.Sequential(
-            torch.nn.Linear(4 * dim_hidden + 2, 256),
+            torch.nn.Linear(4 * dim_hidden, 256),
             torch.nn.ReLU(),
             torch.nn.Dropout(p=dropout_rate),
             torch.nn.Linear(256, 32),
@@ -188,35 +208,46 @@ class UttBinHierRNN(torch.nn.Module):
             'cos': torch.nn.CosineSimilarity(dim=-1, eps=1e-6),
             'inner_product': BatchInnerProduct()
         }[similarity]
-
+        """
         self.sims = [
             torch.nn.CosineSimilarity(dim=-1, eps=1e-6),
             BatchInnerProduct()
         ]
+        """
 
         if has_emb:
             self.embeddings = torch.nn.Embedding(vol_size,
                                                  dim_embeddings)
 
     def forward(self, context, context_ends, options, option_lens):
-        # context_lens = [ends[-1] for ends in context_ends]
-        context_last = [
-            list(context[i, (ends[-2] if len(ends)>1 else 0):ends[-1]])
-            for i, ends in enumerate(context_ends)
-        ]
-        padding = torch.zeros_like(context[0, 0]).cuda()
-        context_lens, context = pad_and_cat(context_last, padding)
-        # print(context_lens, context.size())
+        context_lens = [ends[-1] for ends in context_ends]
+        
+        if self.only_last_context:
+            context_last = [
+                list(context[i, (ends[-2] if len(ends)>1 else 0):ends[-1]])
+                for i, ends in enumerate(context_ends)
+            ]
+            padding = torch.zeros_like(context[0, 0]).cuda()
+            context_lens, context = pad_and_cat(context_last, padding)
+
+        if self.use_intra_att:
+            context_intra = self.intra_att_context(context, context_lens)
         
         logits = []
         for i, option in enumerate(options.transpose(1, 0)):
+            option_len = [ol[i] for ol in option_lens]
+
             if self.use_co_att:
-                option_len = [ol[i] for ol in option_lens]
                 context_cast, option_cast = self.co_att_encoder(
                     context, context_lens, option, option_len)
             else:
                 context_cast = context
                 option_cast = option
+
+            if self.use_intra_att:
+                option_intra = self.intra_att_option(option, option_len)
+                context_cast = torch.cat([context_cast, context_intra], -1)
+                option_cast = torch.cat([option_cast, option_intra], -1)
 
             # context_hidden = self.context_encoder(context_cast, context_ends)
             context_hidden = self.utterance_encoder(context_cast)
@@ -229,10 +260,11 @@ class UttBinHierRNN(torch.nn.Module):
                 [option_hidden*context_hidden, option_hidden-context_hidden],
                 -1
             )
+            """
             for sim in self.sims:
                 similarity = sim(option_hidden, context_hidden).unsqueeze(-1)
                 fused = torch.cat([fused, similarity], -1)
-            
+            """
             logit = self.mlp(fused)
 
             logit = torch.reshape(logit, (-1,))
@@ -261,6 +293,8 @@ class HierRNNEncoder(torch.nn.Module):
 
         if utt_enc is not None:
             self.utt_enc = utt_enc
+            if utt_enc_type == 'rnn':
+                self.utt_enc_rnn = self.utt_enc.rnn
         else:
             if utt_enc_type == 'rnn':
                 self.utt_enc = LSTMEncoder(dim_embeddings, dim_hidden1)
@@ -344,6 +378,39 @@ class LSTMEncoder(torch.nn.Module):
         _, hidden = self.rnn(seqs)
         _, c = hidden
         return c.transpose(1, 0).contiguous().view(c.size(1), -1)
+
+
+class LSTMPoolingEncoder(torch.nn.Module):
+    """ 
+
+    Args:
+
+    """
+
+    def __init__(self, dim_embeddings, dim_hidden, pooling='meanmax'):
+        super(LSTMPoolingEncoder, self).__init__()
+        if pooling.lower() not in ['mean', 'max', 'meanmax']:
+            raise ValueError(
+                'LSTMPoolingEncoder: {} pooling not supported'.format(pooling)
+            )
+        self.pooling = pooling
+        self.rnn = torch.nn.LSTM(dim_embeddings,
+                                 dim_hidden,
+                                 1,
+                                 bidirectional=True,
+                                 batch_first=True)
+
+    def forward(self, seqs, seq_lens=None):
+        output, _ = self.rnn(seqs)
+        
+        if self.pooling == 'mean':
+            pooled = output.mean(1)
+        elif self.pooling == 'max':
+            pooled = output.max(1)[0]
+        else:
+            pooled = torch.cat([output.mean(1), output.max(1)[0]], -1)
+        
+        return pooled
 
 
 class Conv1dEncoder(torch.nn.Module):

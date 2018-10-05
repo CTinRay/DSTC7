@@ -47,7 +47,7 @@ def main(args):
     elif config['arch'] == 'HierRNN':
         from hierrnn_predictor import HierRNNPredictor
         PredictorClass = HierRNNPredictor
-    elif config['arch'] == 'UttHierRNN' or config['arch'] == 'UttBinHierRNN':
+    elif config['arch'] in ['UttHierRNN', 'UttHierRNN', 'MCAN']:
         from hierrnn_predictor import UttHierRNNPredictor
         PredictorClass = UttHierRNNPredictor
         config['model_parameters']['model_type'] = config['arch']
