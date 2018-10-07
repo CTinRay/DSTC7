@@ -54,6 +54,9 @@ def main(args):
     elif config['arch'] == 'RecurrentTransformer':
         from recurrent_transformer_predictor import RTPredictor
         PredictorClass = RTPredictor
+    elif config['arch'] == 'Summation':
+        from summation_predictor import SummationPredictor
+        PredictorClass = SummationPredictor
 
     predictor = PredictorClass(
         metrics=[FinalMetrics(rank_na=config['rank_na'])],
