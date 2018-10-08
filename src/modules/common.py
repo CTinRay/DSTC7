@@ -293,16 +293,19 @@ class HierRNNEncoder(torch.nn.Module):
 
         if utt_enc is not None:
             self.utt_enc = utt_enc
-            if utt_enc_type == 'rnn':
+            if utt_enc_type == 'rnn' or utt_enc_type == 'pool-lstm':
                 self.utt_enc_rnn = self.utt_enc.rnn
         else:
             if utt_enc_type == 'rnn':
                 self.utt_enc = LSTMEncoder(dim_embeddings, dim_hidden1)
                 self.utt_enc_rnn = self.utt_enc.rnn
-            else:
+            elif utt_enc_type == 'cnn':
                 self.utt_enc = Conv1dEncoder(dim_embeddings,
                                              dim_hidden1 // 2,
                                              kernel_sizes=[2, 3, 4, 5])
+            elif utt_enc_type == 'pool-lstm':
+                self.utt_enc = LSTMPoolingEncoder(dim_embeddings, dim_hidden1)
+                self.utt_enc_rnn = self.utt_enc.rnn
 
         if ctx_enc is not None:
             self.rnn2 = ctx_enc
@@ -329,16 +332,18 @@ class HierRNNEncoder(torch.nn.Module):
             outputs, _ = self.utt_enc_rnn(seq)
             end_outputs = [[outputs[b, end] for end in ends[b]]
                            for b in range(batch_size)]
-        else:
+        elif self.utt_enc_type == 'cnn':
             end_outputs = []
             for b in range(batch_size):
                 outputs = []
-                for i in range(len(ends[b])-1):
-                    start, end = ends[b][i], ends[b][i+1]
+                for i in range(len(ends[b])):
+                    start, end = (0 if i == 0 else ends[b][i-1]), ends[b][i]
                     outputs.append(
                         self.utt_enc(seq[b, start:end].unsqueeze(0)).squeeze()
                     )
                 end_outputs.append(outputs)
+        elif self.utt_enc_type == 'pool-lstm':
+            end_outputs = self.utt_enc(seq, ends=ends)
         
         lens, end_outputs = pad_and_cat(end_outputs, self.padding)
         encoded = self.rnn2(end_outputs, list(map(len, ends)))
@@ -400,16 +405,33 @@ class LSTMPoolingEncoder(torch.nn.Module):
                                  bidirectional=True,
                                  batch_first=True)
 
-    def forward(self, seqs, seq_lens=None):
+    def forward(self, seqs, seq_lens=None, ends=None):
         output, _ = self.rnn(seqs)
-        
-        if self.pooling == 'mean':
-            pooled = output.mean(1)
-        elif self.pooling == 'max':
-            pooled = output.max(1)[0]
+       
+        if ends is None:
+            if self.pooling == 'mean':
+                pooled = output.mean(1)
+            elif self.pooling == 'max':
+                pooled = output.max(1)[0]
+            else:
+                pooled = torch.cat([output.mean(1), output.max(1)[0]], -1)
         else:
-            pooled = torch.cat([output.mean(1), output.max(1)[0]], -1)
-        
+            pooled = []
+            for b in range(seqs.size(0)):
+                outputs = []
+                for i in range(len(ends[b])):
+                    start, end = (0 if i == 0 else ends[b][i-1]), ends[b][i]
+                    # outs.size() == (seq_len, dim_hidden)
+                    outs = output[b, start:end]
+                    if self.pooling == 'mean':
+                        outs = outs.mean(0)
+                    elif self.pooling == 'max':
+                        outs = outs.max(0)[0]
+                    else:
+                        outs = torch.cat([outs.mean(0), outs.max(0)[0]], -1)
+                    outputs.append(outs)
+                pooled.append(outputs)
+            
         return pooled
 
 

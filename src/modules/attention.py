@@ -21,13 +21,14 @@ class CoAttention(nn.Module):
         self.fcm = nn.Sequential(nn.Linear(dim_embeddings, 1), nn.ReLU())
         self.fcs = nn.Sequential(nn.Linear(dim_embeddings, 1), nn.ReLU())
         
-    def forward(self, query, query_lens, option, option_lens):
+    def forward(self, query, query_lens, option, option_lens, affinity=None):
         # print('query.size', query.size())
         # print('option.size', option.size())
         # query.size() = (batch_size, query_len, dim_e)
         # option.size() = (batch_size, option_len, dim_e)
         # affinity = torch.matmul(self.M(query), option.transpose(1, 2))
-        affinity = torch.matmul(query, option.transpose(1, 2))
+        if affinity is None:
+            affinity = torch.matmul(query, option.transpose(1, 2))
         # print('affinity.size', affinity.size())
         # affinity.size() = (batch_size, query_len, option_len)
         mask_query = make_mask(query, query_lens)
@@ -81,12 +82,13 @@ class CoAttentionEncoder(nn.Module):
         self.co_att_align = CoAttention(dim_embeddings, pooling='align')
 
     def forward(self, query, query_lens, option, option_lens):
+        affinity = torch.matmul(query, option.transpose(1, 2))
         att_q_max, att_o_max = self.co_att_max(
-            query, query_lens, option, option_lens)
+            query, query_lens, option, option_lens, affinity)
         att_q_mean, att_o_mean = self.co_att_mean(
-            query, query_lens, option, option_lens)
+            query, query_lens, option, option_lens, affinity)
         att_q_align, att_o_align = self.co_att_align(
-            query, query_lens, option, option_lens)
+            query, query_lens, option, option_lens, affinity)
 
         new_query = torch.cat([query, att_q_max, att_q_mean, att_q_align], -1)
         new_option = torch.cat([option, att_o_max, att_o_mean, att_o_align], -1)
@@ -119,7 +121,7 @@ class IntraAttention(nn.Module):
 
         query_weights = F.softmax(masked_affinity_query, dim=2)
         summary_query = torch.matmul(query_weights.transpose(1, 2),
-                                      query)
+                                     query)
 
         # print('summary_query.size', summary_query.size())
         query_c = self.fcc(torch.cat([summary_query, query], -1))

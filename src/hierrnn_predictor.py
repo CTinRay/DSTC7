@@ -110,7 +110,8 @@ class UttHierRNNPredictor(BasePredictor):
                  similarity='inner_product', fine_tune_emb=False,
                  has_info=False, model_type='UttHierRNN',
                  utt_enc_type='rnn', use_co_att=False, use_intra_att=False,
-                 only_last_context=False, **kwargs):
+                 only_last_context=False, intra_per_utt=False,
+                 use_highway_encoder=False, **kwargs):
         super(UttHierRNNPredictor, self).__init__(**kwargs)
         self.dim_hidden = dim_hidden
         self.has_info = has_info
@@ -142,7 +143,9 @@ class UttHierRNNPredictor(BasePredictor):
                               utt_enc_type=utt_enc_type,
                               use_co_att=use_co_att,
                               use_intra_att=use_intra_att,
-                              only_last_context=only_last_context)
+                              only_last_context=only_last_context,
+                              intra_per_utt=intra_per_utt,
+                              use_highway_encoder=use_highway_encoder)
         else:
             print('Model type {} not supported!!!!!'.format(model_type))
             return None

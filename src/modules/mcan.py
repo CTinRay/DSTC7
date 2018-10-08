@@ -17,15 +17,24 @@ class MCAN(torch.nn.Module):
                  similarity='inner_product', has_emb=False, vol_size=-1,
                  dropout_rate=0.0, utt_enc_type='rnn',
                  use_co_att=False, use_intra_att=False,
-                 only_last_context=False):
+                 only_last_context=False, intra_per_utt=False,
+                 use_highway_encoder=False):
         
         super(MCAN, self).__init__()
         self.dim_embeddings = self.dim_features = dim_embeddings
 
+        self.use_highway_encoder = use_highway_encoder
+        if use_highway_encoder:
+            self.highway_encoder = HighwayNetwork(dim_embeddings, n_layers=1)
+
         self.use_intra_att = use_intra_att
+        self.intra_per_utt = intra_per_utt
         if use_intra_att:
+            """
             self.intra_att_context = IntraAttention(dim_embeddings)
             self.intra_att_option = IntraAttention(dim_embeddings)
+            """
+            self.intra_att_encoder = IntraAttention(dim_embeddings)
             self.dim_features += 3
 
         self.use_co_att = use_co_att
@@ -37,6 +46,10 @@ class MCAN(torch.nn.Module):
             self.utterance_encoder = LSTMPoolingEncoder(self.dim_features,
                                                         dim_hidden,
                                                         'meanmax')
+            """
+            self.utterance_encoder = LSTMEncoder(self.dim_features,
+                                                 2 * dim_hidden)
+            """
         else:
             self.utterance_encoder = Conv1dEncoder(
                 dim_embeddings,
@@ -45,15 +58,29 @@ class MCAN(torch.nn.Module):
         
         self.only_last_context = only_last_context
         if not only_last_context:
-            ctx_enc = LSTMEncoder(4 * dim_hidden, 2 * dim_hidden)
+            ctx_enc = LSTMPoolingEncoder(4 * dim_hidden, dim_hidden)
+            # ctx_enc = LSTMEncoder(4 * dim_hidden, 2 * dim_hidden)
             self.context_encoder = HierRNNEncoder(
                 self.dim_features,
                 dim_hidden, 2 * dim_hidden,
                 utt_enc=self.utterance_encoder,
                 ctx_enc=ctx_enc,
                 utt_enc_type='pool-lstm')
+            """
+            self.context_encoder = HierRNNEncoder(
+                self.dim_features,
+                dim_hidden, 2 * dim_hidden,
+                utt_enc=self.utterance_encoder,
+                ctx_enc=ctx_enc,
+                utt_enc_type='rnn')
+            """
 
-        h_dim = 8 * dim_hidden
+        # if self.utterance_encoder.pooling == 'meanmax':
+        if True:
+            h_dim = 8 * dim_hidden
+        else:
+            h_dim = 4 * dim_hidden
+
         self.prediction_layer = torch.nn.Sequential(
             HighwayNetwork(h_dim, n_layers=2),
             torch.nn.Linear(h_dim, 1, bias=True)
@@ -64,18 +91,46 @@ class MCAN(torch.nn.Module):
                                                  dim_embeddings)
 
     def forward(self, context, context_ends, options, option_lens):
+        if self.use_highway_encoder:
+            context = self.highway_encoder(context)
+            options = self.highway_encoder(options)
+
         context_lens = [ends[-1] for ends in context_ends]
         
+        padding = torch.zeros_like(context[0, 0]).cuda()
         if self.only_last_context:
             context_last = [
                 list(context[i, (ends[-2] if len(ends)>1 else 0):ends[-1]])
                 for i, ends in enumerate(context_ends)
             ]
-            padding = torch.zeros_like(context[0, 0]).cuda()
             context_lens, context = pad_and_cat(context_last, padding)
 
         if self.use_intra_att:
-            context_intra = self.intra_att_context(context, context_lens)
+            if self.only_last_context:
+                context_intra = self.intra_att_encoder(context, context_lens)
+            else:
+                # context_intra = self.intra_att_context(context, context_lens)
+                if self.intra_per_utt:
+                    ctx_length = context.size(1)
+                    context_intra = []
+                    for b in range(context.size(0)):
+                        ends = [0] + context_ends[b]
+                        ctxs = []
+                        for start, end in zip(ends[:-1], ends[1:]):
+                            ctxs.append(list(context[b, start:end]))
+                        lens, ctxs = pad_and_cat(ctxs, padding)
+                        ctx_intra = self.intra_att_encoder(ctxs, lens)
+                        intras = []
+                        for i in range(ctx_intra.size(0)):
+                            intras.append(ctx_intra[i, :lens[i]])
+                        intras = torch.cat(intras, 0)
+                        if intras.size(0) < ctx_length:
+                            pad = torch.zeros((ctx_length-intras.size(0), 3)).cuda()
+                            intras = torch.cat([intras, pad], 0)
+                        context_intra.append(intras)
+                    context_intra = torch.stack(context_intra, 0)
+                else:
+                    context_intra = self.intra_att_encoder(context, context_lens)
         
         logits = []
         for i, option in enumerate(options.transpose(1, 0)):
@@ -89,7 +144,8 @@ class MCAN(torch.nn.Module):
                 option_cast = option
 
             if self.use_intra_att:
-                option_intra = self.intra_att_option(option, option_len)
+                # option_intra = self.intra_att_option(option, option_len)
+                option_intra = self.intra_att_encoder(option, option_len)
                 context_cast = torch.cat([context_cast, context_intra], -1)
                 option_cast = torch.cat([option_cast, option_intra], -1)
 
