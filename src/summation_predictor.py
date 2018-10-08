@@ -37,7 +37,7 @@ class SummationPredictor(BasePredictor):
             elif config['arch'] == 'HierRNN':
                 from hierrnn_predictor import HierRNNPredictor
                 PredictorClass = HierRNNPredictor
-            elif config['arch'] == 'UttHierRNN':
+            elif config['arch'] in ['UttHierRNN', 'UttBinHierRNN', 'MCAN']:
                 from hierrnn_predictor import UttHierRNNPredictor
                 PredictorClass = UttHierRNNPredictor
                 config['model_parameters']['model_type'] = config['arch']
