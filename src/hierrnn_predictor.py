@@ -86,6 +86,19 @@ class HierRNNPredictor(BasePredictor):
     def _predict_batch(self, batch):
         context = self.embeddings(batch['context'].to(self.device))
         options = self.embeddings(batch['options'].to(self.device))
+        if self.has_info:
+            context = torch.cat([context,
+                                 batch['prior'].unsqueeze(-1)
+                                               .to(self.device),
+                                 batch['suggested'].unsqueeze(-1)
+                                                   .to(self.device)
+                                 ], -1)
+            options = torch.cat([options,
+                                 batch['option_prior'].unsqueeze(-1)
+                                                      .to(self.device),
+                                 batch['option_suggested'].unsqueeze(-1)
+                                                          .to(self.device)
+                                 ], -1)
         logits = self.model.forward(
             context.to(self.device),
             batch['utterance_ends'],
@@ -118,12 +131,14 @@ class UttHierRNNPredictor(BasePredictor):
 
         if model_type == 'UttHierRNN':
             self.model = UttHierRNN(dim_embed, dim_hidden,
-                                    similarity=similarity, has_emb=fine_tune_emb,
+                                    similarity=similarity,
+                                    has_emb=fine_tune_emb,
                                     vol_size=embeddings.size(0),
                                     dropout_rate=dropout_rate)
         elif model_type == 'UttBinHierRNN':
             self.model = UttBinHierRNN(dim_embed, dim_hidden,
-                                       similarity=similarity, has_emb=fine_tune_emb,
+                                       similarity=similarity,
+                                       has_emb=fine_tune_emb,
                                        vol_size=embeddings.size(0),
                                        dropout_rate=dropout_rate)
         else:
@@ -189,6 +204,19 @@ class UttHierRNNPredictor(BasePredictor):
     def _predict_batch(self, batch):
         context = self.embeddings(batch['context'].to(self.device))
         options = self.embeddings(batch['options'].to(self.device))
+        if self.has_info:
+            context = torch.cat([context,
+                                 batch['prior'].unsqueeze(-1)
+                                               .to(self.device),
+                                 batch['suggested'].unsqueeze(-1)
+                                                   .to(self.device)
+                                 ], -1)
+            options = torch.cat([options,
+                                 batch['option_prior'].unsqueeze(-1)
+                                                      .to(self.device),
+                                 batch['option_suggested'].unsqueeze(-1)
+                                                          .to(self.device)
+                                 ], -1)
         logits = self.model.forward(
             context.to(self.device),
             batch['utterance_ends'],
