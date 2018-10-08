@@ -51,6 +51,9 @@ def main(args):
     elif config['arch'] == 'RecurrentTransformer':
         from recurrent_transformer_predictor import RTPredictor
         PredictorClass = RTPredictor
+    elif config['arch'] == 'Summation':
+        from summation_predictor import SummationPredictor
+        PredictorClass = SummationPredictor
 
     predictor = PredictorClass(metrics=[Accuracy()],
                                **config['model_parameters'])
@@ -59,8 +62,10 @@ def main(args):
         args.model_dir,
         'model.pkl.{}'.format(args.epoch))
 
-    logging.info('loading model from {}'.format(model_path))
-    predictor.load(model_path)
+    if not args.not_load:
+        logging.info('loading model from {}'.format(model_path))
+        predictor.load(model_path)
+
     logging.info('predicting...')
     predict = predictor.predict_dataset(
         config['model_parameters']['valid'],
@@ -84,6 +89,8 @@ def _parse_args():
                         help='Device used to train. Can be cpu or cuda:0,'
                         ' cuda:1, etc.')
     parser.add_argument('--epoch', type=int, default=10)
+    parser.add_argument('--not_load', default=False, action='store_true',
+                        help='Do not load model. Default is False.')
     args = parser.parse_args()
     return args
 
