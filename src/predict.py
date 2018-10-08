@@ -64,21 +64,21 @@ def main(args):
     for predict, sample in zip(predicts, test):
         candidate_ranking = [
             {
-                'candidate_id': oid,
+                'candidate-id': oid,
                 'confidence': score.item()
             }
             for score, oid in zip(predict, sample['option_ids'])
         ]
         if config['rank_na']:
             candidate_ranking.append({
-                'candidate_id': "NONE",
+                'candidate-id': "NONE",
                 'confidence': 0
             })
 
         candidate_ranking = sorted(candidate_ranking,
                                    key=lambda x: -x['confidence'])
         outputs.append({
-            'example_id': sample['id'],
+            'example-id': sample['id'],
             'candidate-ranking': candidate_ranking
         })
 
