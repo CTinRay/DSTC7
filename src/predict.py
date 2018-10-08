@@ -6,6 +6,9 @@ import pickle
 import sys
 import traceback
 import json
+import torch
+
+from metrics import FinalMetrics
 
 
 def main(args):
@@ -17,6 +20,22 @@ def main(args):
     with open(config['model_parameters']['embeddings'], 'rb') as f:
         embeddings = pickle.load(f)
         config['model_parameters']['embeddings'] = embeddings.embeddings
+
+    if 'valid' in config['model_parameters']:
+        logging.info('loading dev data...')
+        with open(config['model_parameters']['valid'], 'rb') as f:
+            config['model_parameters']['valid'] = pickle.load(f)
+            config['model_parameters']['valid'].padding = \
+                embeddings.to_index('</s>')
+            config['model_parameters']['valid'].n_positive = \
+                config['valid_n_positive']
+            config['model_parameters']['valid'].n_negative = \
+                config['valid_n_negative']
+            config['model_parameters']['valid'].context_padded_len = \
+                config['context_padded_len']
+            config['model_parameters']['valid'].option_padded_len = \
+                config['option_padded_len']
+            config['model_parameters']['valid'].min_context_len = 10000
 
     logging.info('loading test data...')
     with open(config['test'], 'rb') as f:
@@ -56,6 +75,19 @@ def main(args):
     if not args.not_load:
         logging.info('loading model from {}'.format(model_path))
         predictor.load(model_path)
+
+    if 'valid' in config['model_parameters']:
+        logging.info('predicting valid set...')
+        predicts = predictor.predict_dataset(
+            config['model_parameters']['valid'],
+            config['model_parameters']['valid'].collate_fn)
+
+        labels = torch.tensor(
+            [sample['labels'] for sample in config['model_parameters']['valid']]
+        )
+        final = FinalMetrics(rank_na=config['rank_na'])
+        final.update(predicts, {'labels': labels})
+        print(final.get_score())
 
     logging.info('predicting...')
     predicts = predictor.predict_dataset(test, test.collate_fn)

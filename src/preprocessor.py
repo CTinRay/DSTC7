@@ -3,6 +3,7 @@ import logging
 import spacy
 from multiprocessing import Pool
 from dataset import DSTC7Dataset
+from tqdm import tqdm
 
 
 class Preprocessor:
@@ -75,7 +76,7 @@ class Preprocessor:
             list of processed dict.
         """
         processed = []
-        for sample in dataset:
+        for sample in tqdm(dataset):
             processed.append(self.preprocess(sample, **preprocess_args))
 
         return processed
