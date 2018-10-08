@@ -8,7 +8,8 @@ from modules.common import NLLLoss, RankLoss
 
 
 class SummationPredictor(BasePredictor):
-    def __init__(self, embeddings, model_paths, loss='NLLLoss', margin=0.2,
+    def __init__(self, embeddings, hr_model_paths, rt_model_paths,
+                 loss='NLLLoss', margin=0.2,
                  has_info=False, threshold=0.0, **kwargs):
         super(SummationPredictor, self).__init__(**kwargs)
         self.embeddings = torch.nn.Embedding(embeddings.size(0),
@@ -16,8 +17,10 @@ class SummationPredictor(BasePredictor):
         self.embeddings.weight = torch.nn.Parameter(embeddings)
         self.has_info = has_info
 
+        self.n_hr_models = len(hr_model_paths)
+        self.n_rt_models = len(rt_model_paths)
         models = []
-        for model_path in model_paths:
+        for model_path in hr_model_paths + rt_model_paths:
             model_dir = os.path.dirname(model_path)
             config_path = os.path.join(model_dir, 'config.json')
             with open(config_path) as f:
@@ -76,41 +79,43 @@ class SummationPredictor(BasePredictor):
             context = self.embeddings(batch['context'].to(self.device))
             options = self.embeddings(batch['options'].to(self.device))
 
-        if self.has_info:
-            prior = batch['prior'].unsqueeze(-1).to(self.device)
-            suggested = batch['suggested'].unsqueeze(-1).to(self.device)
-            context = torch.cat([context] + [prior, suggested] * 1, -1)
+            if self.has_info:
+                prior = batch['prior'].unsqueeze(-1).to(self.device)
+                suggested = batch['suggested'].unsqueeze(-1).to(self.device)
+                context = torch.cat([context] + [prior, suggested] * 1, -1)
 
-            prior = batch['option_prior'].unsqueeze(-1).to(self.device)
-            suggested = batch['option_suggested'].unsqueeze(-1).to(self.device)
-            options = torch.cat([options] + [prior, suggested] * 1, -1)
+                prior = batch['option_prior'].unsqueeze(-1).to(self.device)
+                suggested = batch['option_suggested'].unsqueeze(-1).to(self.device)
+                options = torch.cat([options] + [prior, suggested] * 1, -1)
 
-        logits = self.model.models[0].forward(
-            context.to(self.device),
-            batch['utterance_ends'],
-            options.to(self.device),
-            batch['option_lens'])
+        logits = 0
+        for i in range(self.n_hr_models):
+            logits += self.model.models[i].forward(
+                context.to(self.device),
+                batch['utterance_ends'],
+                options.to(self.device),
+                batch['option_lens'])
 
         with torch.no_grad():
             context = self.embeddings(batch['context'].to(self.device))
             options = self.embeddings(batch['options'].to(self.device))
+            if self.has_info:
+                prior = batch['prior'].unsqueeze(-1).to(self.device)
+                suggested = batch['suggested'].unsqueeze(-1).to(self.device)
+                context = torch.cat([context] + [prior, suggested] * 3, -1)
 
-        if self.has_info:
-            prior = batch['prior'].unsqueeze(-1).to(self.device)
-            suggested = batch['suggested'].unsqueeze(-1).to(self.device)
-            context = torch.cat([context] + [prior, suggested] * 3, -1)
+                prior = batch['option_prior'].unsqueeze(-1).to(self.device)
+                suggested = batch['option_suggested'].unsqueeze(-1).to(self.device)
+                options = torch.cat([options] + [prior, suggested] * 3, -1)
 
-            prior = batch['option_prior'].unsqueeze(-1).to(self.device)
-            suggested = batch['option_suggested'].unsqueeze(-1).to(self.device)
-            options = torch.cat([options] + [prior, suggested] * 3, -1)
+        for i in range(self.n_hr_models, self.n_hr_models + self.n_rt_models):
+            logits += self.model.models[i].forward(
+                context.to(self.device),
+                batch['utterance_ends'],
+                options.to(self.device),
+                batch['option_lens'])
 
-        logits += self.model.models[1].forward(
-            context.to(self.device),
-            batch['utterance_ends'],
-            options.to(self.device),
-            batch['option_lens'])
-
-        return logits / 2
+        return logits / (self.n_hr_models + self.n_rt_models)
 
 
 class Summation(torch.nn.Module):
