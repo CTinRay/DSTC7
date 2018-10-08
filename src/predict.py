@@ -41,6 +41,9 @@ def main(args):
     elif config['arch'] == 'RecurrentTransformer':
         from recurrent_transformer_predictor import RTPredictor
         PredictorClass = RTPredictor
+    elif config['arch'] == 'Summation':
+        from summation_predictor import SummationPredictor
+        PredictorClass = SummationPredictor
 
     predictor = PredictorClass(metrics=[],
                                **config['model_parameters'])
@@ -50,8 +53,10 @@ def main(args):
         'model.pkl.{}'.format(args.epoch))
 
     # model_path = '/tmp/model.pkl'
-    logging.info('loading model from {}'.format(model_path))
-    predictor.load(model_path)
+    if not args.not_load:
+        logging.info('loading model from {}'.format(model_path))
+        predictor.load(model_path)
+
     logging.info('predicting...')
     predicts = predictor.predict_dataset(test, test.collate_fn)
 
@@ -59,15 +64,21 @@ def main(args):
     for predict, sample in zip(predicts, test):
         candidate_ranking = [
             {
-                'candidate_id': oid,
+                'candidate-id': oid,
                 'confidence': score.item()
             }
             for score, oid in zip(predict, sample['option_ids'])
         ]
+        if config['rank_na']:
+            candidate_ranking.append({
+                'candidate-id': "NONE",
+                'confidence': 0
+            })
+
         candidate_ranking = sorted(candidate_ranking,
                                    key=lambda x: -x['confidence'])
         outputs.append({
-            'example_id': sample['id'],
+            'example-id': sample['id'],
             'candidate-ranking': candidate_ranking
         })
 
@@ -86,6 +97,8 @@ def _parse_args():
     parser.add_argument('--device', default=None,
                         help='Device used to train. Can be cpu or cuda:0,'
                         ' cuda:1, etc.')
+    parser.add_argument('--not_load', action='store_true',
+                        help='Do not load any model.')
     parser.add_argument('--epoch', type=int, default=10)
     args = parser.parse_args()
     return args
