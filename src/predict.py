@@ -53,8 +53,10 @@ def main(args):
         'model.pkl.{}'.format(args.epoch))
 
     # model_path = '/tmp/model.pkl'
-    logging.info('loading model from {}'.format(model_path))
-    predictor.load(model_path)
+    if not args.not_load:
+        logging.info('loading model from {}'.format(model_path))
+        predictor.load(model_path)
+
     logging.info('predicting...')
     predicts = predictor.predict_dataset(test, test.collate_fn)
 
@@ -67,6 +69,12 @@ def main(args):
             }
             for score, oid in zip(predict, sample['option_ids'])
         ]
+        if config['rank_na']:
+            candidate_ranking.append({
+                'candidate_id': "NONE",
+                'confidence': 0
+            })
+
         candidate_ranking = sorted(candidate_ranking,
                                    key=lambda x: -x['confidence'])
         outputs.append({
@@ -89,6 +97,8 @@ def _parse_args():
     parser.add_argument('--device', default=None,
                         help='Device used to train. Can be cpu or cuda:0,'
                         ' cuda:1, etc.')
+    parser.add_argument('--not_load', action='store_true',
+                        help='Do not load any model.')
     parser.add_argument('--epoch', type=int, default=10)
     args = parser.parse_args()
     return args
