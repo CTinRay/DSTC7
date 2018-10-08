@@ -41,7 +41,7 @@ class Embeddings:
 
     def add(self, word, vector=None):
         if vector is not None:
-            vector.view_(1, -1)
+            vector = vector.view(1, -1)
         else:
             vector = torch.empty(1, self.get_dim())
             torch.nn.init.uniform_(vector)
@@ -49,7 +49,8 @@ class Embeddings:
         self.word_dict[word] = len(self.word_dict)
 
     def extend(self, embeddings_path, words, oov_as_unk=True):
-        self._load_embeddings(embeddings_path, set(words))
+        self._load_embeddings(embeddings_path,
+                              set(words) if words else None)
 
         if words is not None and not oov_as_unk:
             # initialize word vector for OOV
