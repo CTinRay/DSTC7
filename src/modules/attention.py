@@ -16,7 +16,7 @@ class CoAttention(nn.Module):
         self.pooling = pooling.lower()
 
         
-        # self.M = nn.Linear(self.dim_e, self.dim_e)
+        self.M = nn.Linear(self.dim_e, self.dim_e)
         self.fcc = nn.Sequential(nn.Linear(2 * dim_embeddings, 1), nn.ReLU())
         self.fcm = nn.Sequential(nn.Linear(dim_embeddings, 1), nn.ReLU())
         self.fcs = nn.Sequential(nn.Linear(dim_embeddings, 1), nn.ReLU())
@@ -26,9 +26,9 @@ class CoAttention(nn.Module):
         # print('option.size', option.size())
         # query.size() = (batch_size, query_len, dim_e)
         # option.size() = (batch_size, option_len, dim_e)
-        # affinity = torch.matmul(self.M(query), option.transpose(1, 2))
-        if affinity is None:
-            affinity = torch.matmul(query, option.transpose(1, 2))
+        affinity = torch.matmul(self.M(query), option.transpose(1, 2))
+        # if affinity is None:
+        #     affinity = torch.matmul(query, option.transpose(1, 2))
         # print('affinity.size', affinity.size())
         # affinity.size() = (batch_size, query_len, option_len)
         mask_query = make_mask(query, query_lens)
@@ -54,9 +54,9 @@ class CoAttention(nn.Module):
                 masked_affinity_option.max(1)[0], dim=-1)
             summary_option = option_weights.unsqueeze(2) * option
         else:
-            query_weights = F.softmax(masked_affinity_option, dim=1)
+            query_weights = F.softmax(masked_affinity_option, dim=2)
             summary_query = torch.matmul(query_weights, option)
-            option_weights = F.softmax(masked_affinity_query, dim=2)
+            option_weights = F.softmax(masked_affinity_query, dim=1)
             summary_option = torch.matmul(option_weights.transpose(1, 2),
                                           query)
 
@@ -82,13 +82,12 @@ class CoAttentionEncoder(nn.Module):
         self.co_att_align = CoAttention(dim_embeddings, pooling='align')
 
     def forward(self, query, query_lens, option, option_lens):
-        affinity = torch.matmul(query, option.transpose(1, 2))
         att_q_max, att_o_max = self.co_att_max(
-            query, query_lens, option, option_lens, affinity)
+            query, query_lens, option, option_lens)
         att_q_mean, att_o_mean = self.co_att_mean(
-            query, query_lens, option, option_lens, affinity)
+            query, query_lens, option, option_lens)
         att_q_align, att_o_align = self.co_att_align(
-            query, query_lens, option, option_lens, affinity)
+            query, query_lens, option, option_lens)
 
         new_query = torch.cat([query, att_q_max, att_q_mean, att_q_align], -1)
         new_option = torch.cat([option, att_o_max, att_o_mean, att_o_align], -1)
@@ -102,6 +101,7 @@ class IntraAttention(nn.Module):
         
         self.dim_e = dim_embeddings
 
+        self.M = nn.Linear(self.dim_e, self.dim_e)
         self.fcc = nn.Sequential(nn.Linear(2 * dim_embeddings, 1), nn.ReLU())
         self.fcm = nn.Sequential(nn.Linear(dim_embeddings, 1), nn.ReLU())
         self.fcs = nn.Sequential(nn.Linear(dim_embeddings, 1), nn.ReLU())
@@ -109,8 +109,8 @@ class IntraAttention(nn.Module):
     def forward(self, query, query_lens):
         # print('query.size', query.size())
         # query.size() = (batch_size, query_len, dim_e)
-        # affinity = torch.matmul(self.M(query), option.transpose(1, 2))
-        affinity = torch.matmul(query, query.transpose(1, 2))
+        affinity = torch.matmul(self.M(query), query.transpose(1, 2))
+        # affinity = torch.matmul(query, query.transpose(1, 2))
         # print('affinity.size', affinity.size())
         # affinity.size() = (batch_size, query_len, query_len)
         mask_query = make_mask(query, query_lens)
@@ -119,7 +119,7 @@ class IntraAttention(nn.Module):
         masked_affinity_query = affinity.masked_fill(
             mask_query.unsqueeze(2) == 0, -math.inf)
 
-        query_weights = F.softmax(masked_affinity_query, dim=2)
+        query_weights = F.softmax(masked_affinity_query, dim=1)
         summary_query = torch.matmul(query_weights.transpose(1, 2),
                                      query)
 
