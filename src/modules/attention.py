@@ -6,29 +6,31 @@ from torch.nn import functional as F
 
 
 class CoAttention(nn.Module):
-    def __init__(self, dim_embeddings, pooling='mean'):
+    def __init__(self, dim_embeddings, pooling='mean', use_projection=True):
         super(CoAttention, self).__init__()
         
         self.dim_e = dim_embeddings
+        self.use_projection = use_projection
 
         if pooling.lower() not in ['mean', 'max', 'align']:
             raise ValueError("Pooling type {} not supported".format(pooling))
         self.pooling = pooling.lower()
 
-        
-        self.M = nn.Linear(self.dim_e, self.dim_e)
+        if use_projection:
+            self.M = nn.Linear(self.dim_e, self.dim_e)
         self.fcc = nn.Sequential(nn.Linear(2 * dim_embeddings, 1), nn.ReLU())
         self.fcm = nn.Sequential(nn.Linear(dim_embeddings, 1), nn.ReLU())
         self.fcs = nn.Sequential(nn.Linear(dim_embeddings, 1), nn.ReLU())
         
-    def forward(self, query, query_lens, option, option_lens, affinity=None):
+    def forward(self, query, query_lens, option, option_lens):
         # print('query.size', query.size())
         # print('option.size', option.size())
         # query.size() = (batch_size, query_len, dim_e)
         # option.size() = (batch_size, option_len, dim_e)
-        affinity = torch.matmul(self.M(query), option.transpose(1, 2))
-        # if affinity is None:
-        #     affinity = torch.matmul(query, option.transpose(1, 2))
+        if self.use_projection:
+            affinity = torch.matmul(self.M(query), option.transpose(1, 2))
+        else:
+            affinity = torch.matmul(query, option.transpose(1, 2))
         # print('affinity.size', affinity.size())
         # affinity.size() = (batch_size, query_len, option_len)
         mask_query = make_mask(query, query_lens)
@@ -74,12 +76,15 @@ class CoAttention(nn.Module):
 
 
 class CoAttentionEncoder(nn.Module):
-    def __init__(self, dim_embeddings):
+    def __init__(self, dim_embeddings, use_projection=True):
         super(CoAttentionEncoder, self).__init__()
 
-        self.co_att_max = CoAttention(dim_embeddings, pooling='max')
-        self.co_att_mean = CoAttention(dim_embeddings, pooling='mean')
-        self.co_att_align = CoAttention(dim_embeddings, pooling='align')
+        self.co_att_max = CoAttention(
+            dim_embeddings, pooling='max', use_projection=use_projection)
+        self.co_att_mean = CoAttention(
+            dim_embeddings, pooling='mean', use_projection=use_projection)
+        self.co_att_align = CoAttention(
+            dim_embeddings, pooling='align', use_projection=use_projection)
 
     def forward(self, query, query_lens, option, option_lens):
         att_q_max, att_o_max = self.co_att_max(
@@ -96,12 +101,14 @@ class CoAttentionEncoder(nn.Module):
 
 
 class IntraAttention(nn.Module):
-    def __init__(self, dim_embeddings):
+    def __init__(self, dim_embeddings, use_projection=True):
         super(IntraAttention, self).__init__()
         
         self.dim_e = dim_embeddings
-
-        self.M = nn.Linear(self.dim_e, self.dim_e)
+        self.use_projection = use_projection
+        
+        if use_projection:
+            self.M = nn.Linear(self.dim_e, self.dim_e)
         self.fcc = nn.Sequential(nn.Linear(2 * dim_embeddings, 1), nn.ReLU())
         self.fcm = nn.Sequential(nn.Linear(dim_embeddings, 1), nn.ReLU())
         self.fcs = nn.Sequential(nn.Linear(dim_embeddings, 1), nn.ReLU())
@@ -109,8 +116,10 @@ class IntraAttention(nn.Module):
     def forward(self, query, query_lens):
         # print('query.size', query.size())
         # query.size() = (batch_size, query_len, dim_e)
-        affinity = torch.matmul(self.M(query), query.transpose(1, 2))
-        # affinity = torch.matmul(query, query.transpose(1, 2))
+        if self.use_projection:
+            affinity = torch.matmul(self.M(query), query.transpose(1, 2))
+        else:
+            affinity = torch.matmul(query, query.transpose(1, 2))
         # print('affinity.size', affinity.size())
         # affinity.size() = (batch_size, query_len, query_len)
         mask_query = make_mask(query, query_lens)

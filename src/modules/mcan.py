@@ -18,7 +18,7 @@ class MCAN(torch.nn.Module):
                  dropout_rate=0.0, utt_enc_type='rnn',
                  use_co_att=False, use_intra_att=False,
                  only_last_context=False, intra_per_utt=False,
-                 use_highway_encoder=False):
+                 use_highway_encoder=False, use_projection=True):
         
         super(MCAN, self).__init__()
         self.dim_embeddings = self.dim_features = dim_embeddings
@@ -34,12 +34,14 @@ class MCAN(torch.nn.Module):
             self.intra_att_context = IntraAttention(dim_embeddings)
             self.intra_att_option = IntraAttention(dim_embeddings)
             """
-            self.intra_att_encoder = IntraAttention(dim_embeddings)
+            self.intra_att_encoder = IntraAttention(dim_embeddings,
+                                                    use_projection=use_projection)
             self.dim_features += 3
 
         self.use_co_att = use_co_att
         if use_co_att:
-            self.co_att_encoder = CoAttentionEncoder(dim_embeddings)
+            self.co_att_encoder = CoAttentionEncoder(dim_embeddings,
+                                                     use_projection=use_projection)
             self.dim_features += 9
 
         if utt_enc_type == 'rnn':
