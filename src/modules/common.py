@@ -115,7 +115,8 @@ class UttHierRNN(torch.nn.Module):
         self.transform = torch.nn.Linear(2 * dim_hidden, 2 * dim_hidden)
         self.similarity = {
             'cos': torch.nn.CosineSimilarity(dim=-1, eps=1e-6),
-            'inner_product': BatchInnerProduct()
+            'inner_product': BatchInnerProduct(),
+            'mlp': BatchMLP(dim_hidden * 2)
         }[similarity]
         if has_emb:
             self.embeddings = torch.nn.Embedding(vol_size,
@@ -362,6 +363,29 @@ class BatchInnerProduct(torch.nn.Module):
 
     def forward(self, a, b):
         return (a * b).sum(-1)
+
+
+class BatchMLP(torch.nn.Module):
+    """
+
+    Args:
+
+    """
+    def __init__(self, dim_in):
+        super(BatchMLP, self).__init__()
+        self.mlp = torch.nn.Sequential(
+            torch.nn.Linear(dim_in * 2, 256),
+            torch.nn.ReLU(),
+            torch.nn.Linear(256, 32),
+            torch.nn.ReLU(),
+            torch.nn.Linear(32, 1)
+        )
+
+    def forward(self, a, b):
+        return self.mlp(
+            torch.cat([a - b, a * b], -1)
+        ).squeeze(-1)
+
 
 
 class LSTMEncoder(torch.nn.Module):
