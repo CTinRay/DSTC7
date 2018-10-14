@@ -1,6 +1,7 @@
 import torch
 from base_predictor import BasePredictor
 from modules import HierRNN, UttHierRNN, UttBinHierRNN, NLLLoss, RankLoss
+from modules.mcan import MCAN
 
 
 class HierRNNPredictor(BasePredictor):
@@ -120,7 +121,10 @@ class UttHierRNNPredictor(BasePredictor):
     def __init__(self, embeddings, dim_hidden,
                  dropout_rate=0.2, loss='NLLLoss', margin=0, threshold=None,
                  similarity='inner_product', fine_tune_emb=False,
-                 has_info=False, model_type='UttHierRNN', **kwargs):
+                 has_info=False, model_type='UttHierRNN',
+                 utt_enc_type='rnn', use_co_att=False, use_intra_att=False,
+                 only_last_context=False, intra_per_utt=False,
+                 use_highway_encoder=False, use_projection=True, **kwargs):
         super(UttHierRNNPredictor, self).__init__(**kwargs)
         self.dim_hidden = dim_hidden
         self.has_info = has_info
@@ -134,13 +138,30 @@ class UttHierRNNPredictor(BasePredictor):
                                     similarity=similarity,
                                     has_emb=fine_tune_emb,
                                     vol_size=embeddings.size(0),
-                                    dropout_rate=dropout_rate)
+                                    dropout_rate=dropout_rate,
+                                    utt_enc_type=utt_enc_type)
         elif model_type == 'UttBinHierRNN':
             self.model = UttBinHierRNN(dim_embed, dim_hidden,
                                        similarity=similarity,
                                        has_emb=fine_tune_emb,
                                        vol_size=embeddings.size(0),
-                                       dropout_rate=dropout_rate)
+                                       dropout_rate=dropout_rate,
+                                       utt_enc_type=utt_enc_type,
+                                       use_co_att=use_co_att,
+                                       use_intra_att=use_intra_att,
+                                       only_last_context=only_last_context)
+        elif model_type == 'MCAN':
+            self.model = MCAN(dim_embed, dim_hidden,
+                              similarity=similarity, has_emb=fine_tune_emb,
+                              vol_size=embeddings.size(0),
+                              dropout_rate=dropout_rate,
+                              utt_enc_type=utt_enc_type,
+                              use_co_att=use_co_att,
+                              use_intra_att=use_intra_att,
+                              only_last_context=only_last_context,
+                              intra_per_utt=intra_per_utt,
+                              use_highway_encoder=use_highway_encoder,
+                              use_projection=use_projection)
         else:
             print('Model type {} not supported!!!!!'.format(model_type))
             return None

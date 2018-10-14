@@ -3,6 +3,7 @@ import logging
 import spacy
 from multiprocessing import Pool
 from dataset import DSTC7Dataset
+from tqdm import tqdm
 
 
 class Preprocessor:
@@ -75,12 +76,12 @@ class Preprocessor:
             list of processed dict.
         """
         processed = []
-        for sample in dataset:
+        for sample in tqdm(dataset):
             processed.append(self.preprocess(sample, **preprocess_args))
 
         return processed
 
-    def preprocess(self, data, cat=True):
+    def preprocess(self, data, cat=True, testing=False):
         """
         Args:
             data (dict)
@@ -106,11 +107,12 @@ class Preprocessor:
         # process options
         processed['options'] = []
         processed['option_ids'] = []
-        for option in data['options-for-correct-answers']:
-            processed['options'].append(
-                self.sentence_to_indices(option['utterance'].lower())
-            )
-            processed['option_ids'].append(option['candidate-id'])
+        if not testing:
+            for option in data['options-for-correct-answers']:
+                processed['options'].append(
+                    self.sentence_to_indices(option['utterance'].lower())
+                )
+                processed['option_ids'].append(option['candidate-id'])
 
         for option in data['options-for-next']:
             processed['options'].append(
@@ -118,7 +120,10 @@ class Preprocessor:
             )
             processed['option_ids'].append(option['candidate-id'])
 
-        processed['n_corrects'] = len(data['options-for-correct-answers'])
+        if not testing:
+            processed['n_corrects'] = len(data['options-for-correct-answers'])
+        else:
+            processed['n_corrects'] = 0
 
         if cat:
             context = []
