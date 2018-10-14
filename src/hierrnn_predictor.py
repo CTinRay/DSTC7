@@ -46,7 +46,8 @@ class HierRNNPredictor(BasePredictor):
 
         self.loss = {
             'NLLLoss': NLLLoss(),
-            'RankLoss': RankLoss(margin, threshold)
+            'RankLoss': RankLoss(margin, threshold),
+            'BCELoss': torch.nn.BCELoss()
         }[loss]
 
     def _run_iter(self, batch, training):

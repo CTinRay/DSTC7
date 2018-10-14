@@ -240,7 +240,13 @@ class BatchMLP(torch.nn.Module):
     """
     def __init__(self, dim_in):
         super(BatchMLP, self).__init__()
-        self.mlp = torch.nn.Linear(dim_in * 2, 1)
+        self.mlp = torch.nn.Sequential(
+            torch.nn.Linear(dim_in * 2, 256),
+            torch.nn.ReLU(),
+            torch.nn.Linear(256, 32),
+            torch.nn.ReLU(),
+            torch.nn.Linear(32, 1)
+        )
 
     def forward(self, a, b):
         return self.mlp(
