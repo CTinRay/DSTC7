@@ -253,18 +253,29 @@ class LayerNorm(nn.Module):
 
 
 class Seq2Vec(torch.nn.Module):
-    """ 
+    """
     Args:
     """
 
-    def __init__(self, dim_in, dim_out, n_heads, dropout_rate):
+    def __init__(self, dim_in, dim_out, n_heads, dropout_rate,
+                 pooling='attention'):
         super(Seq2Vec, self).__init__()
-        self.attention = MultiHeadAttention(dim_in, dim_out, n_heads,
-                                            dropout_rate)
+        if pooling not in ['attention', 'mean', 'max']:
+            raise Exception('pooling method {} is not defined.'
+                            .format(pooling))
 
-        q = torch.zeros(1, 1, dim_out)
-        torch.nn.init.normal_(q)
-        self.q = torch.nn.Parameter(q)
+        if pooling in ['mean', 'max'] and dim_in != dim_out:
+            raise Exception('dim_in must equal to dim_out for {} pooling'
+                            .format(pooling))
+
+        self.pooling = pooling
+        if pooling == 'attention':
+            self.attention = MultiHeadAttention(dim_in, dim_out, n_heads,
+                                                dropout_rate)
+
+            q = torch.zeros(1, 1, dim_out)
+            torch.nn.init.normal_(q)
+            self.q = torch.nn.Parameter(q)
 
     def forward(self, seq, seq_len):
         """
@@ -274,9 +285,20 @@ class Seq2Vec(torch.nn.Module):
         Returns:
             FloatTensor of shape (batch, dim_out).
         """
-        mask = make_mask(seq, seq_len)
-        q = torch.cat([self.q] * seq.shape[0], 0)
-        return self.attention(q, seq, mask).squeeze(1)
+        if self.pooling == 'attention':
+            mask = make_mask(seq, seq_len)
+            q = torch.cat([self.q] * seq.shape[0], 0)
+            vec = self.attention(q, seq, mask).squeeze(1)
+        elif self.pooling == 'max':
+            vec = seq.max(-2)[0]
+        elif self.pooling == 'mean':
+            vec = (
+                seq.sum(-2)
+                / torch.tensor(seq_len).float().to(seq.device)
+                                       .unsqueeze(-1)
+            )
+
+        return vec
 
 
 def make_mask(seq, lens):

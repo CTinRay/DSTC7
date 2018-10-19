@@ -16,7 +16,7 @@ class RecurrentTransformer(torch.nn.Module):
     def __init__(self, dim_embeddings, n_heads, dropout_rate, dim_ff,
                  dim_encoder=102, dim_encoder_ff=256,
                  has_emb=False, vol_size=-1, n_blocks=1,
-                 use_mcan=False):
+                 use_mcan=False, seq2vec_pooling='attention'):
         super(RecurrentTransformer, self).__init__()
         self.transformer = RecurrentTransformerEncoder(
             dim_embeddings + (12 if use_mcan else 0),
@@ -28,7 +28,8 @@ class RecurrentTransformer(torch.nn.Module):
         )
         self.attn = Connection(dim_encoder, dim_encoder, n_heads,
                                dropout_rate, dim_encoder_ff)
-        self.seq2vec = Seq2Vec(dim_encoder, dim_encoder, n_heads, dropout_rate)
+        self.seq2vec = Seq2Vec(dim_encoder, dim_encoder, n_heads, dropout_rate,
+                               pooling=seq2vec_pooling)
         self.mlp = torch.nn.Sequential(
             torch.nn.Linear(dim_encoder, 256),
             torch.nn.ReLU(),
