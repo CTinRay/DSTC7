@@ -1,9 +1,9 @@
 import torch
-import pdb
-# from .transformer import EncoderLayer as TransformerEncoder
 from .transformer2 import Encoder as TransformerEncoder
 from .transformer2 import Connection, Seq2Vec
-from .common import pad_seqs, BatchInnerProduct
+from .common import (pad_seqs, BatchInnerProduct, pad_and_cat)
+from .attention import CoAttention, IntraAttention
+from .mcan import HighwayNetwork
 
 
 class RecurrentTransformer(torch.nn.Module):
@@ -15,10 +15,11 @@ class RecurrentTransformer(torch.nn.Module):
 
     def __init__(self, dim_embeddings, n_heads, dropout_rate, dim_ff,
                  dim_encoder=102, dim_encoder_ff=256,
-                 has_emb=False, vol_size=-1, n_blocks=1):
+                 has_emb=False, vol_size=-1, n_blocks=1,
+                 use_mcan=False, seq2vec_pooling='attention'):
         super(RecurrentTransformer, self).__init__()
         self.transformer = RecurrentTransformerEncoder(
-            dim_embeddings,
+            dim_embeddings + (12 if use_mcan else 0),
             n_heads, dropout_rate, dim_ff,
             dim_encoder, dim_encoder_ff, n_blocks)
         self.last_encoder = TransformerEncoder(
@@ -27,7 +28,8 @@ class RecurrentTransformer(torch.nn.Module):
         )
         self.attn = Connection(dim_encoder, dim_encoder, n_heads,
                                dropout_rate, dim_encoder_ff)
-        self.seq2vec = Seq2Vec(dim_encoder, dim_encoder, n_heads, dropout_rate)
+        self.seq2vec = Seq2Vec(dim_encoder, dim_encoder, n_heads, dropout_rate,
+                               pooling=seq2vec_pooling)
         self.mlp = torch.nn.Sequential(
             torch.nn.Linear(dim_encoder, 256),
             torch.nn.ReLU(),
@@ -40,24 +42,35 @@ class RecurrentTransformer(torch.nn.Module):
             self.embeddings = torch.nn.Embedding(vol_size,
                                                  dim_embeddings)
 
+        self.use_mcan = use_mcan
+        if use_mcan:
+            self.mcan = MCAN(dim_embeddings, dropout_rate)
+
     def forward(self, context, context_ends, options, option_lens):
         batch_size = context.size(0)
-        context = self.transformer(context, context_ends)
-        context_lens, context = pad_seqs(context, self.padding2)
-        context_vecs = self.seq2vec(context, context_lens)
+
+        if not self.use_mcan:
+            context_enc = self.transformer(context, context_ends)
+            context_lens, context_enc = pad_seqs(context_enc, self.padding2)
+
         logits = []
         for i, option in enumerate(options.transpose(1, 0)):
-            # option = self.transformer.encoder(
-            #     option,
-            #     [option_lens[b][i] for b in range(batch_size)])
-
             opt_lens = [option_lens[b][i]
                         for b in range(batch_size)]
 
-            option = self.transformer.encoder(option[:, :max(opt_lens)],
-                                              opt_lens)
-            attn_co = self.attn(context, option, context_lens)
-            attn_oc = self.attn(option, context, opt_lens)
+            if self.use_mcan:
+                ctx_features, opt_features = self.mcan(context, context_ends,
+                                                       option, opt_lens)
+                context_cat = torch.cat([context, ctx_features], -1)
+                context_enc = self.transformer(context_cat, context_ends)
+                context_lens, context_enc = \
+                    pad_seqs(context_enc, self.padding2)
+                option = torch.cat([option, opt_features], -1)
+
+            option_enc = self.transformer.encoder(option[:, :max(opt_lens)],
+                                                  opt_lens)
+            attn_co = self.attn(context_enc, option_enc, context_lens)
+            attn_oc = self.attn(option_enc, context_enc, opt_lens)
 
             ctx_vecs = self.seq2vec(attn_oc, opt_lens)
             opt_vecs = self.seq2vec(attn_co, context_lens)
@@ -72,7 +85,7 @@ class RecurrentTransformer(torch.nn.Module):
 
 
 class RecurrentTransformerEncoder(torch.nn.Module):
-    """ 
+    """
 
     Args:
 
@@ -139,3 +152,115 @@ class RecurrentTransformerEncoder(torch.nn.Module):
         return encoded
 
 
+class MCAN(torch.nn.Module):
+    """
+
+    Args:
+
+    """
+    def __init__(self, dim_embeddings,
+                 dropout_rate=0.0,
+                 use_co_att=True,
+                 use_intra_att=True,
+                 intra_per_utt=False,
+                 use_highway_encoder=True,
+                 use_projection=True):
+        super(MCAN, self).__init__()
+
+        self.use_intra_att = use_intra_att
+        self.intra_per_utt = intra_per_utt
+        if use_intra_att:
+            self.intra_att_encoder = IntraAttention(
+                dim_embeddings, use_projection=use_projection
+            )
+
+        self.use_co_att = use_co_att
+        if use_co_att:
+            self.co_att_mean = CoAttention(
+                dim_embeddings, pooling='mean',
+                use_projection=use_projection
+            )
+            self.co_att_max = CoAttention(
+                dim_embeddings, pooling='max',
+                use_projection=use_projection
+            )
+            self.co_att_align = CoAttention(
+                dim_embeddings, pooling='align',
+                use_projection=use_projection
+            )
+
+        self.use_highway_encoder = use_highway_encoder
+        if use_highway_encoder:
+            self.highway_encoder = HighwayNetwork(dim_embeddings, n_layers=1)
+
+    def forward(self, context, context_ends, option, option_len):
+        context_lens = [ends[-1] for ends in context_ends]
+        if self.use_highway_encoder:
+            context = self.highway_encoder(context)
+            option = self.highway_encoder(option)
+
+        # accumulator for casted features
+        ctx_casted_features = []
+        opt_casted_features = []
+
+        # intra attention
+        padding = torch.zeros_like(context[0, 0])
+        if self.use_intra_att:
+            if self.intra_per_utt:
+                context_intra = []
+                for b, ends in enumerate(context_ends):
+                    # split to subsequences
+                    utts = []
+                    for start, end in zip([0] + ends[:-1], ends[1:]):
+                        utts.append(list(context[b, start:end]))
+                    lens, utts = pad_and_cat(utts, padding)
+
+                    # encode subsequences
+                    utt_intras = self.intra_att_encoder(utts, lens)
+
+                    # concatenate back to single sequence
+                    utt_intras = [utt_intra[:ul]
+                                  for utt_intra, ul in zip(utt_intras, lens)]
+
+                    # add back some padding so shape[0] remain after catted
+                    utt_intras.apend(
+                        torch.zeros(
+                            (context.size(0) - sum(lens), utt_intras.shape[-1])
+                        ).to(context.device())
+                    )
+
+                    # cat back to a single sequence and accumulate
+                    intras = torch.cat(utt_intras, 0)
+                    context_intra.append(intras)
+
+                context_intra = torch.stack(context_intra, 0)
+            else:
+                context_intra = self.intra_att_encoder(context, context_lens)
+
+            option_intra = self.intra_att_encoder(option, option_len)
+
+            ctx_casted_features.append(context_intra)
+            opt_casted_features.append(option_intra)
+
+        if self.use_co_att:
+            # mean
+            context_co, option_co = self.co_att_mean(
+                context, context_lens, option, option_len)
+            ctx_casted_features.append(context_co)
+            opt_casted_features.append(option_co)
+
+            # max
+            context_co, option_co = self.co_att_max(
+                context, context_lens, option, option_len)
+            ctx_casted_features.append(context_co)
+            opt_casted_features.append(option_co)
+
+            # align
+            context_co, option_co = self.co_att_align(
+                context, context_lens, option, option_len)
+            ctx_casted_features.append(context_co)
+            opt_casted_features.append(option_co)
+
+        ctx_casted_features = torch.cat(ctx_casted_features, dim=-1)
+        opt_casted_features = torch.cat(opt_casted_features, dim=-1)
+        return ctx_casted_features, opt_casted_features
