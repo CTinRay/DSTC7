@@ -67,13 +67,20 @@ def main(args):
         collate_fn=valid.collate_fn,
         num_workers=1)
 
+    # ****** create hooks here ******
     hooks = {m: DumpHook()
-             for m in ['connection']}
+             for m in ['connection', 'mcan']}
+
+    # ****** add hooks to modules ******
     (predictor.model.transformer.
      connection.weight_softmax).register_forward_hook(
         hooks['connection'].forward_hook
     )
+    predictor.model.mcan.register_forward_hook(
+        hooks['mcan'].forward_hook
+    )
 
+    # inference the model
     with torch.no_grad():
         for batch in tqdm(dataloader):
             predictor._run_iter(batch, False)
@@ -95,7 +102,11 @@ class DumpHook:
         self.batch_outputs = []
 
     def forward_hook(self, module, inputs, outputs):
-        self.batch_outputs.append(outputs.cpu())
+        if type(outputs) is tuple:
+            outputs = [output.cpu() for output in outputs]
+        else:
+            outputs = outputs.cpu()
+        self.batch_outputs.append(outputs)
 
     def flush_batch(self):
         self.outputs.append(self.batch_outputs)
