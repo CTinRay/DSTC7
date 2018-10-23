@@ -152,6 +152,7 @@ class Connection(nn.Module):
         self.dropout = torch.nn.Dropout(dropout_rate)
         self.b_prev = torch.nn.Parameter(torch.zeros(1, 1, dim_in))
         self.b_self = torch.nn.Parameter(torch.zeros(1, 1, dim_in))
+        self.weight_softmax = torch.nn.Softmax(-1)
 
     def forward(self, seq1, seq2, seq_len1):
         """
@@ -194,7 +195,7 @@ class Connection(nn.Module):
             mask.view(batch_size, 1, 1, len1) == 0, -math.inf
         )
         score = torch.cat([score_prev, score_self], -1)
-        weights = F.softmax(score, dim=-1)
+        weights = self.weight_softmax(score)
         weights = self.dropout(weights)
         # weight.shape == (batch_size, n_heads, len2, len1 + 1)
 
