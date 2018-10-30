@@ -1,6 +1,6 @@
 import torch
 from base_predictor import BasePredictor
-from modules import RecurrentTransformer, NLLLoss, RankLoss
+from modules import RecurrentTransformer, NaiveTransformer, NLLLoss, RankLoss
 
 
 class RTPredictor(BasePredictor):
@@ -17,16 +17,33 @@ class RTPredictor(BasePredictor):
                  dim_encoder=102, dim_encoder_ff=256,
                  loss='NLLLoss', margin=0, threshold=None,
                  fine_tune_emb=False, has_info=False, n_blocks=1,
+                 recurrent='recurrent', bi_attention='last',
                  use_mcan=False, seq2vec_pooling='attention', **kwargs):
         super(RTPredictor, self).__init__(**kwargs)
         self.has_info = has_info
         dim_embed = embeddings.size(1) + (6 if has_info else 0)
-        self.model = RecurrentTransformer(
-            dim_embed, n_heads, dropout_rate, dim_ff,
-            dim_encoder, dim_encoder_ff, has_emb=fine_tune_emb,
-            vol_size=embeddings.size(0), n_blocks=n_blocks, use_mcan=use_mcan,
-            seq2vec_pooling=seq2vec_pooling
-        )
+        if recurrent == 'recurrent':
+            self.model = RecurrentTransformer(
+                dim_embed, n_heads, dropout_rate, dim_ff,
+                dim_encoder, dim_encoder_ff, has_emb=fine_tune_emb,
+                vol_size=embeddings.size(0), n_blocks=n_blocks, use_mcan=use_mcan,
+                seq2vec_pooling=seq2vec_pooling, bi_attention=bi_attention
+            )
+        elif recurrent == 'none':
+            self.model = NaiveTransformer(
+                dim_embed, n_heads, dropout_rate, dim_ff,
+                dim_encoder, dim_encoder_ff, has_emb=fine_tune_emb,
+                vol_size=embeddings.size(0), n_blocks=n_blocks, use_mcan=use_mcan,
+                seq2vec_pooling=seq2vec_pooling
+            )
+        elif recurrent == 'last':
+            self.model = NaiveTransformer(
+                dim_embed, n_heads, dropout_rate, dim_ff,
+                dim_encoder, dim_encoder_ff, has_emb=fine_tune_emb,
+                vol_size=embeddings.size(0), n_blocks=n_blocks, use_mcan=use_mcan,
+                seq2vec_pooling=seq2vec_pooling, last_only=True
+            )
+
         if fine_tune_emb:
             self.embeddings = self.model.embeddings
         else:
