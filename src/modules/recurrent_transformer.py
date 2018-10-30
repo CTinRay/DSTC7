@@ -67,9 +67,14 @@ class RecurrentTransformer(torch.nn.Module):
                 ctx_features, opt_features = self.mcan(context, context_ends,
                                                        option, opt_lens)
                 context_cat = torch.cat([context, ctx_features], -1)
-                context_enc = self.transformer(context_cat, context_ends)
-                context_lens, context_enc = \
-                    pad_seqs(context_enc, self.padding2)
+                context_enc, outputs = self.transformer(context_cat,
+                                                        context_ends)
+                if self.bi_attention == 'all':
+                    context_lens, context_enc = pad_seqs(outputs,
+                                                         self.padding2)
+                else:
+                    context_lens, context_enc = pad_seqs(context_enc,
+                                                         self.padding2)
                 option = torch.cat([option, opt_features], -1)
 
             option_enc = self.transformer.encoder(option[:, :max(opt_lens)],
