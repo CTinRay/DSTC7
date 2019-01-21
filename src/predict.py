@@ -83,17 +83,28 @@ def main(args):
             config['model_parameters']['valid'].collate_fn)
 
         labels = torch.tensor(
-            [sample['labels'] for sample in config['model_parameters']['valid']]
+            [sample['labels']
+             for sample in config['model_parameters']['valid']]
         )
         final = FinalMetrics(rank_na=config['rank_na'])
         final.update(predicts, {'labels': labels})
         print(final.get_score())
+        output_path = os.path.join(args.model_dir,
+                                   'predict-valid-{}.json'.format(args.epoch))
+        write_predict(predicts, config['model_parameters']['valid'],
+                      output_path, config['rank_na'])
 
     logging.info('predicting...')
     predicts = predictor.predict_dataset(test, test.collate_fn)
 
+    output_path = os.path.join(args.model_dir,
+                               'predict-{}.json'.format(args.epoch))
+    write_predict(predicts, test, output_path, config['rank_na'])
+
+
+def write_predict(predicts, data, output_path, rank_na=False):
     outputs = []
-    for predict, sample in zip(predicts, test):
+    for predict, sample in zip(predicts, data):
         candidate_ranking = [
             {
                 'candidate-id': oid,
@@ -101,7 +112,7 @@ def main(args):
             }
             for score, oid in zip(predict, sample['option_ids'])
         ]
-        if config['rank_na']:
+        if rank_na:
             candidate_ranking.append({
                 'candidate-id': "NONE",
                 'confidence': 0
@@ -114,8 +125,6 @@ def main(args):
             'candidate-ranking': candidate_ranking
         })
 
-    output_path = os.path.join(args.model_dir,
-                               'predict-{}.json'.format(args.epoch))
     logging.info('Writing output to {}'.format(output_path))
     with open(output_path, 'w') as f:
         json.dump(outputs, f, indent='    ')
