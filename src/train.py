@@ -1,7 +1,7 @@
 import argparse
 import logging
 import os
-import pdb
+# import pdb
 import pickle
 import sys
 import traceback
@@ -39,7 +39,7 @@ def main(args):
         train.context_padded_len = config['context_padded_len']
         train.padding = embeddings.to_index('</s>')
         train.option_padded_len = config['option_padded_len']
-        train.min_context_len = 10000
+        train.min_context_len = config.get('min_context_len', 10000)
 
     if config['arch'] == 'DualRNN':
         from dualrnn_predictor import DualRNNPredictor
@@ -47,7 +47,7 @@ def main(args):
     elif config['arch'] == 'HierRNN':
         from hierrnn_predictor import HierRNNPredictor
         PredictorClass = HierRNNPredictor
-    elif config['arch'] in ['UttHierRNN', 'UttHierRNN', 'MCAN']:
+    elif config['arch'] in ['UttHierRNN', 'UttHierRNN', 'MCAN', 'ESIM']:
         from hierrnn_predictor import UttHierRNNPredictor
         PredictorClass = UttHierRNNPredictor
         config['model_parameters']['model_type'] = config['arch']
@@ -104,4 +104,4 @@ if __name__ == '__main__':
     except BaseException:
         type, value, tb = sys.exc_info()
         traceback.print_exc()
-        pdb.post_mortem(tb)
+        # pdb.post_mortem(tb)

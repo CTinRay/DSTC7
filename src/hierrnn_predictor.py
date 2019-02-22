@@ -2,6 +2,7 @@ import torch
 from base_predictor import BasePredictor
 from modules import HierRNN, UttHierRNN, UttBinHierRNN, NLLLoss, RankLoss
 from modules.mcan import MCAN
+from modules.esim import ESIM
 
 
 class HierRNNPredictor(BasePredictor):
@@ -162,6 +163,13 @@ class UttHierRNNPredictor(BasePredictor):
                               only_last_context=only_last_context,
                               intra_per_utt=intra_per_utt,
                               use_highway_encoder=use_highway_encoder,
+                              use_projection=use_projection)
+        elif model_type == 'ESIM':
+            self.model = ESIM(dim_embed, dim_hidden,
+                              similarity=similarity,
+                              has_emb=fine_tune_emb,
+                              vol_size=embeddings.size(0),
+                              dropout_rate=dropout_rate,
                               use_projection=use_projection)
         else:
             print('Model type {} not supported!!!!!'.format(model_type))
